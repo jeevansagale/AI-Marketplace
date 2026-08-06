@@ -1,0 +1,69 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: marketplace-db
+    environment:
+      POSTGRES_USER: marketplace
+      POSTGRES_PASSWORD: marketplace_dev
+      POSTGRES_DB: marketplace
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ../docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marketplace -d marketplace"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: marketplace-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  gateway:
+    build:
+      context: ../..
+      dockerfile: infra/docker/gateway.Dockerfile
+    environment:
+      OMNI_HTTP_ADDR: ":8080"
+      OMNI_DB_DSN: postgres://marketplace:marketplace_dev@db:5432/marketplace?sslmode=disable
+      OMNI_REDIS_ADDR: "redis:6379"
+      OMNI_MODE: demo
+      OMNI_LOG_LEVEL: info
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  controlplane:
+    build:
+      context: ../..
+      dockerfile: infra/docker/controlplane.Dockerfile
+    environment:
+      OMNI_HTTP_ADDR: ":8081"
+      OMNI_DB_DSN: postgres://marketplace:marketplace_dev@db:5432/marketplace?sslmode=disable
+      OMNI_MODE: demo
+      OMNI_LOG_LEVEL: info
+    ports:
+      - "8081:8081"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:
+  redis-data:
