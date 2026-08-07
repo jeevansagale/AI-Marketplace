@@ -1,28 +1,83 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-mono-jb), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Inverted neutral scale — light Stripe/Linear-style UI */
+  --color-base-950: #fafbfc;
+  --color-base-900: #ffffff;
+  --color-base-850: #f8fafc;
+  --color-base-800: #f1f5f9;
+  --color-base-750: #e9eef5;
+  --color-base-700: #e2e8f0;
+  --color-base-600: #cbd5e1;
+  --color-base-500: #94a3b8;
+  --color-base-400: #64748b;
+  --color-base-300: #475569;
+  --color-base-200: #1e293b;
+  --color-base-100: #0f172a;
+
+  --color-accent-400: #7c9bff;
+  --color-accent-500: #4f6ef7;
+  --color-accent-600: #3b56e0;
+
+  --color-pos-400: #16a34a;
+  --color-pos-500: #15803d;
+
+  --color-neg-400: #dc2626;
+
+  --color-warn-400: #d97706;
+}
+
 :root {
-  --background: #0a0a0f;
-  --foreground: #e5e7eb;
-  --primary: #6366f1;
-  --primary-foreground: #ffffff;
-  --muted: #1f2937;
-  --accent: #10b981;
-  --border: #374151;
+  --background: #fafbfc;
+  --foreground: #0f172a;
+  --border-subtle: #e2e8f0;
 }
 
 @layer base {
+  html {
+    color-scheme: light;
+  }
   body {
     background: var(--background);
     color: var(--foreground);
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+    letter-spacing: -0.011em;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 8px;
+    border: 2px solid #fafbfc;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
   }
 }
 
 @layer utilities {
-  .text-gradient {
-    background: linear-gradient(135deg, #6366f1, #10b981);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+  .surface {
+    background: var(--color-base-900);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+  }
+  .surface-raised {
+    background: var(--color-base-850);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 12px -2px rgb(15 23 42 / 0.08);
+  }
+  .skeleton {
+    background: linear-gradient(90deg, #eef2f7 25%, #f8fafc 50%, #eef2f7 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
   }
 }

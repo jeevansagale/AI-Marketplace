@@ -50,13 +50,19 @@ type chatMessage struct {
 	Content string `json:"content"`
 }
 
-func pickText(model string) string {
+// CorpusText returns the deterministic demo response for a model. Exported so
+// the provider abstraction can reuse the same corpus without duplication.
+func CorpusText(model string) string {
 	// Deterministic-ish selection for demo consistency.
 	idx := 0
 	for _, c := range model {
 		idx = (idx + int(c)) % len(corpus)
 	}
 	return corpus[idx]
+}
+
+func pickText(model string) string {
+	return CorpusText(model)
 }
 
 func nonStreamChat(w http.ResponseWriter, model string) {

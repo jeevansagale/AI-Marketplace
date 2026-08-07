@@ -1,8 +1,17 @@
-// Marketplace API Gateway — Hackathon MVP.
+// Marketplace API Gateway — Hackathon v2.
 // Implements the HTTP 402 Payment Required loop:
 //   1. Client → POST /v1/chat/completions (no proof) → 402 + X-402-Payment-Required
 //   2. Client → retry with X-402-Payment-Proof → validate → bill → stream to provider
-// Wire format per API_Specification.md (Base64-JSON headers, RFC 9457 body).
+// Plus the v2 wallet/session API:
+//   - GET  /api/catalog                 marketplace catalog (INR pricing)
+//   - GET  /api/wallet                  current/reserved/available balance
+//   - GET  /api/wallet/transactions     user transaction history
+//   - POST /api/topup                   create payment order (payment abstraction)
+//   - POST /api/topup/verify            verify callback and credit wallet
+//   - POST /api/sessions                create session reservation
+//   - POST /api/sessions/{id}/stream    SSE stream with metering + settlement + refund
+//   - GET  /api/sessions                session list for wallet
+//   - GET  /api/ledger                  immutable ledger (read-only)
 package main
 
 import (
@@ -18,8 +27,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/x402-marketplace/catalog"
+	"github.com/x402-marketplace/gateway/internal/ledger"
 	"github.com/x402-marketplace/gateway/internal/mockprovider"
+	"github.com/x402-marketplace/gateway/internal/payments"
+	"github.com/x402-marketplace/gateway/internal/provider"
+	"github.com/x402-marketplace/gateway/internal/session"
+	"github.com/x402-marketplace/gateway/internal/settlement"
 	"github.com/x402-marketplace/gateway/internal/store"
+	"github.com/x402-marketplace/gateway/internal/wallet"
 	"github.com/x402-marketplace/gateway/internal/x402"
 )
 
@@ -29,8 +45,8 @@ const (
 	// headerSpent reports what the request cost.
 	headerSpent = "X-402-Spent"
 
-	// Demo flat-rate per inference call (micro-USDC). Real pricing is
-	// per-token with streaming reconciliation (M2, per Implementation Plan).
+	// Demo flat-rate per inference call (micro-USDC). Kept for the legacy
+	// x402 channel flow; new sessions use INR reservation pricing.
 	costPerCall uint64 = 2500
 
 	challengeTTL  = 2 * time.Minute
@@ -42,8 +58,13 @@ const (
 var requestID atomic.Uint64
 
 type gateway struct {
-	st     *store.Store
-	logger *log.Logger
+	st      *store.Store
+	logger  *log.Logger
+	cat     catalog.Catalog
+	wallets *wallet.Service
+	ledger  *ledger.Ledger
+	sess    *session.Service
+	pay     *payments.DemoProvider
 }
 
 func main() {
@@ -53,7 +74,18 @@ func main() {
 	st := store.New()
 	st.SeedDemo()
 
-	g := &gateway{st: st, logger: logger}
+	cat := catalog.Default()
+	lg := ledger.New()
+
+	// Seed the demo INR wallet (₹100.00).
+	wallets := wallet.NewService(map[string]int64{wallet.DemoWalletID: 100_00})
+
+	reg := provider.NewRegistry(cat, os.Getenv("OMNI_OPENAI_API_KEY"), os.Getenv("OMNI_GEMINI_API_KEY"))
+	settle := settlement.NewInternalDriver(lg)
+	sess := session.NewService(wallets, lg, reg, cat, settle)
+	pay := payments.NewDemoProvider()
+
+	g := &gateway{st: st, logger: logger, cat: cat, wallets: wallets, ledger: lg, sess: sess, pay: pay}
 
 	mux := http.NewServeMux()
 
@@ -71,9 +103,20 @@ func main() {
 		})
 	})
 
-	// OpenAI-compatible surface.
+	// Legacy OpenAI-compatible surface (402 flow preserved).
 	mux.HandleFunc("GET /v1/models", g.handleModels)
 	mux.HandleFunc("POST /v1/chat/completions", g.handleChatCompletions)
+
+	// v2 API surface.
+	mux.HandleFunc("GET /api/catalog", g.handleCatalog)
+	mux.HandleFunc("GET /api/wallet", g.handleWallet)
+	mux.HandleFunc("GET /api/wallet/transactions", g.handleWalletTransactions)
+	mux.HandleFunc("POST /api/topup", g.handleTopUp)
+	mux.HandleFunc("POST /api/topup/verify", g.handleTopUpVerify)
+	mux.HandleFunc("POST /api/sessions", g.handleSessionCreate)
+	mux.HandleFunc("POST /api/sessions/{id}/stream", g.handleSessionStream)
+	mux.HandleFunc("GET /api/sessions", g.handleSessionList)
+	mux.HandleFunc("GET /api/ledger", g.handleLedger)
 
 	srv := &http.Server{
 		Addr:              addr,
@@ -87,8 +130,190 @@ func main() {
 	}
 }
 
+// ---- v2 API ----
+
+// handleCatalog returns the marketplace catalog with INR pricing.
+func (g *gateway) handleCatalog(w http.ResponseWriter, r *http.Request) {
+	models := g.cat.ActiveModels()
+	for i := range models {
+		models[i].Description = strings.TrimSpace(models[i].Description)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"providers": g.cat.Providers,
+		"models":    models,
+	})
+}
+
+func (g *gateway) handleWallet(w http.ResponseWriter, r *http.Request) {
+	bal, err := g.wallets.Balance(wallet.DemoWalletID)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, bal)
+}
+
+func (g *gateway) handleWalletTransactions(w http.ResponseWriter, r *http.Request) {
+	tx, err := g.wallets.Transactions(wallet.DemoWalletID)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"transactions": tx})
+}
+
+// handleTopUp creates a payment order through the payment abstraction.
+func (g *gateway) handleTopUp(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		AmountINR float64 `json:"amount_inr"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	amountPaise := int64(req.AmountINR * 100)
+	if amountPaise <= 0 {
+		writeErr(w, http.StatusBadRequest, errors.New("amount_inr must be positive"))
+		return
+	}
+	order, err := g.pay.CreateOrder(amountPaise, wallet.DemoWalletID)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"order_id":     order.ID,
+		"amount_paise": order.AmountPaise,
+		"status":       order.Status,
+		"checkout_url": order.Checkout,
+	})
+}
+
+// handleTopUpVerify processes the simulated payment webhook. The wallet is
+// credited only after the provider verifies the order.
+func (g *gateway) handleTopUpVerify(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		OrderID string `json:"order_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	ok, err := g.pay.Verify(req.OrderID, []byte("webhook:"+req.OrderID))
+	if err != nil {
+		writeErr(w, http.StatusUnprocessableEntity, err)
+		return
+	}
+	if !ok {
+		writeErr(w, http.StatusUnauthorized, payments.ErrInvalidCallback)
+		return
+	}
+	// Wallet credited only after successful verification.
+	// Look up the order amount from the provider (never trust client input).
+	_amount := g.orderAmount(req.OrderID)
+	if _amount <= 0 {
+		writeErr(w, http.StatusBadRequest, errors.New("unknown order"))
+		return
+	}
+	if err := g.wallets.TopUp(wallet.DemoWalletID, _amount, "topup:"+req.OrderID); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	g.ledger.Append(ledger.Entry{
+		Kind:      ledger.KindTopUp,
+		WalletID:  wallet.DemoWalletID,
+		Amount:    _amount,
+		Reference: req.OrderID,
+		Status:    "credited",
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "verified", "credited_paise": _amount})
+}
+
+func (g *gateway) orderAmount(orderID string) int64 {
+	// Demo provider stores order amounts; a real integration would query
+	// the payment provider API.
+	return g.pay.OrderAmount(orderID)
+}
+
+// handleSessionCreate reserves wallet funds for an estimated session cost.
+func (g *gateway) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Model     string `json:"model"`
+		MaxTokens int    `json:"max_tokens"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if req.Model == "" {
+		writeErr(w, http.StatusBadRequest, errors.New("model is required"))
+		return
+	}
+	slug := catalog.NormalizeModelSlug(req.Model)
+	sess, err := g.sess.Create(wallet.DemoWalletID, slug, req.MaxTokens)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, sess)
+}
+
+// handleSessionStream streams provider tokens as SSE, then settles and refunds.
+func (g *gateway) handleSessionStream(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		Messages  []provider.Message `json:"messages"`
+		MaxTokens int                `json:"max_tokens"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+
+	flusher, _ := w.(http.Flusher)
+	writeSSE := func(ev string) error {
+		_, err := fmt.Fprint(w, ev+"\n\n")
+		if flusher != nil {
+			flusher.Flush()
+		}
+		return err
+	}
+
+	// Emit provider chunks verbatim (OpenAI-compatible SSE).
+	sum, err := g.sess.Stream(r.Context(), id, req.Messages, req.MaxTokens, func(chunk string) error {
+		return writeSSE(strings.TrimSuffix(strings.TrimSuffix(chunk, "\n"), "\n"))
+	})
+	if err != nil {
+		_ = writeSSE(`data: {"error":"` + strings.ReplaceAll(err.Error(), `"`, `\"`) + `"}`)
+		return
+	}
+	b, _ := json.Marshal(map[string]any{
+		"summary": sum,
+		"usage":   sum,
+	})
+	_ = writeSSE("data: " + string(b))
+	_ = writeSSE("data: [DONE]")
+}
+
+func (g *gateway) handleSessionList(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"sessions": g.sess.List(wallet.DemoWalletID)})
+}
+
+func (g *gateway) handleLedger(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"entries": g.ledger.List(),
+		"len":     g.ledger.Len(),
+	})
+}
+
+// ---- Legacy x402 surface (preserved unchanged) ----
+
 // handleModels lists marketplace models (OpenAI-compatible).
-// Catalog mirrors infra/docker/postgres/init/0001_init.sql seed.
 func (g *gateway) handleModels(w http.ResponseWriter, _ *http.Request) {
 	models := []string{
 		"market-llama-3.3-70b-instruct",
@@ -139,8 +364,6 @@ func (g *gateway) handleChatCompletions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Billed — proxy to the provider (in-process for MVP; out-of-process
-	// routing + streaming reconciliation is M2).
 	w.Header().Set(headerSpent, fmt.Sprintf("%d", costPerCall))
 	mockprovider.Handler().ServeHTTP(w, r)
 }
@@ -199,20 +422,15 @@ func (g *gateway) verifyAndBill(w http.ResponseWriter, r *http.Request, proofHdr
 		return errors.New("unsupported signature hint")
 	}
 
-	// Replay protection: nonce must be unique within TTL.
 	if !g.st.ClaimNonce(p.Nonce, nonceTTL) {
 		return errors.New("nonce replay detected")
 	}
 
-	// Channel must exist with funds.
 	ch, ok := g.st.GetChannel(p.ChannelID)
 	if !ok {
 		return errors.New("unknown channel")
 	}
 
-	// Demo verification: sender is signed but for the hackathon we verify
-	// the channel relationship; signature verification lands with AlgoKit
-	// key handling in M2 (Implementation Plan §5.1).
 	if strings.TrimSpace(p.Sender) == "" {
 		return errors.New("missing sender")
 	}
@@ -239,6 +457,15 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeErr(w http.ResponseWriter, status int, err error) {
+	writeJSON(w, status, map[string]any{
+		"error": map[string]any{
+			"message": err.Error(),
+			"status":  status,
+		},
+	})
 }
 
 func corsMiddleware(next http.Handler) http.Handler {

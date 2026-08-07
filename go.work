@@ -3,4 +3,5 @@ go 1.22
 use (
 	./apps/gateway
 	./apps/controlplane
+	./shared/catalog
 )

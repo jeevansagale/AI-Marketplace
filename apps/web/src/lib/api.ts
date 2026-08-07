@@ -1,67 +1,256 @@
-// Marketplace API client — consumes the controlplane catalog.
-// In prod this routes through BFF/Next rewrites; for the demo we call the
-// controlplane directly (CORS-enabled via same-host ports).
+// Marketplace v2 API client — consumes the gateway's /api/* surface.
+// All money values are integer paise (₹). Format with formatINR().
 
 export interface Provider {
   id: string;
   name: string;
   slug: string;
   base_url: string;
-  wallet_address: string;
+  kind: string;
   status: string;
-  reputation: number;
 }
 
-export interface Model {
+export interface MarketModel {
   id: string;
   name: string;
   slug: string;
   category: string;
   description: string;
   context_window: number;
-  price_prompt_micro_usdc: number;
-  price_completion_micro_usdc: number;
-  provider: string;
+  price_base: number; // paise
+  price_prompt: number; // paise per 1K prompt tokens
+  price_completion: number; // paise per 1K completion tokens
   p90_latency_ms: number;
   throughput_tps: number;
+  provider_name: string;
+  provider_id: string;
   is_active: boolean;
+  session_reserve: number; // paise
 }
 
 export interface Catalog {
   providers: Provider[];
-  models: Model[];
+  models: MarketModel[];
 }
 
-const CONTROLPLANE_URL =
-  process.env.NEXT_PUBLIC_CONTROLPLANE_URL ?? "http://localhost:8081";
+export interface WalletBalance {
+  balance: number; // paise
+  reserved: number; // paise
+  available: number; // paise
+}
 
-export async function fetchProviders(): Promise<Provider[]> {
-  const res = await fetch(`${CONTROLPLANE_URL}/api/v1/providers`, {
-    cache: "no-store",
+export interface WalletTx {
+  id: string;
+  kind: string;
+  amount: number; // paise (signed: negative = spend)
+  reference: string;
+  created_at: string;
+}
+
+export interface SessionEvent {
+  stage: string;
+  label: string;
+  at: string;
+  note?: string;
+}
+
+export interface Session {
+  id: string;
+  wallet_id: string;
+  model_id: string;
+  model_name: string;
+  provider_id: string;
+  provider_name: string;
+  reservation_id: string;
+  stage: string;
+  estimated_paise: number;
+  actual_cost_paise: number;
+  refunded_paise: number;
+  timeline: SessionEvent[];
+  usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    latency_ms: number;
+    request_count: number;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StreamSummary {
+  session_id: string;
+  reserved_paise: number;
+  actual_cost_paise: number;
+  refunded_paise: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  latency_ms: number;
+}
+
+export interface LedgerEntry {
+  id: number;
+  timestamp: string;
+  kind: string;
+  wallet_id: string;
+  provider_id: string;
+  model_id: string;
+  reservation: string;
+  amount: number;
+  reference: string;
+  status: string;
+}
+
+export interface TopupOrder {
+  order_id: string;
+  amount_paise: number;
+  status: string;
+  checkout_url: string;
+}
+
+const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL ?? "http://localhost:8080";
+
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function getJSON<T>(path: string): Promise<T> {
+  const res = await fetch(`${GATEWAY_URL}${path}`, { cache: "no-store" });
+  if (!res.ok) {
+    let msg = `${path} → ${res.status}`;
+    try {
+      const body = await res.json();
+      msg = body?.error?.message ?? msg;
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(msg, res.status);
+  }
+  return (await res.json()) as T;
+}
+
+async function postJSON<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${GATEWAY_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`providers ${res.status}`);
-  const data = (await res.json()) as { providers: Provider[] };
-  return data.providers;
+  if (!res.ok) {
+    let msg = `${path} → ${res.status}`;
+    try {
+      const data = await res.json();
+      msg = data?.error?.message ?? msg;
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(msg, res.status);
+  }
+  return (await res.json()) as T;
 }
 
-export async function fetchModels(): Promise<Model[]> {
-  const res = await fetch(`${CONTROLPLANE_URL}/api/v1/models`, {
-    cache: "no-store",
+export const api = {
+  catalog: () => getJSON<Catalog>("/api/catalog"),
+  wallet: () => getJSON<WalletBalance>("/api/wallet"),
+  transactions: () =>
+    getJSON<{ transactions: WalletTx[] }>("/api/wallet/transactions"),
+  ledger: () => getJSON<{ entries: LedgerEntry[]; len: number }>("/api/ledger"),
+  topup: (amountINR: number) =>
+    postJSON<TopupOrder>("/api/topup", { amount_inr: amountINR }),
+  topupVerify: (orderId: string) =>
+    postJSON<{ status: string; credited_paise: number }>("/api/topup/verify", {
+      order_id: orderId,
+    }),
+  createSession: (model: string, maxTokens: number) =>
+    postJSON<Session>("/api/sessions", { model, max_tokens: maxTokens }),
+  sessions: () => getJSON<{ sessions: Session[] }>("/api/sessions"),
+};
+
+export interface StreamCallbacks {
+  onChunk: (text: string) => void;
+  onDone: (summary: StreamSummary) => void;
+  onError: (message: string) => void;
+}
+
+// streamSession opens the SSE endpoint and parses OpenAI-compatible
+// `data: {...}` frames, invoking callbacks as tokens arrive.
+export async function streamSession(
+  sessionId: string,
+  messages: { role: string; content: string }[],
+  maxTokens: number,
+  cb: StreamCallbacks,
+): Promise<void> {
+  const res = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages, max_tokens: maxTokens }),
   });
-  if (!res.ok) throw new Error(`models ${res.status}`);
-  const data = (await res.json()) as { models: Model[] };
-  return data.models;
+  if (!res.ok) {
+    let msg = `stream → ${res.status}`;
+    try {
+      const data = await res.json();
+      msg = data?.error?.message ?? msg;
+    } catch {
+      /* ignore */
+    }
+    cb.onError(msg);
+    return;
+  }
+  if (!res.body) {
+    cb.onError("stream: empty response body");
+    return;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const handleFrame = (frame: string) => {
+    const line = frame.trim();
+    if (!line.startsWith("data:")) return;
+    const payload = line.slice(5).trim();
+    if (payload === "[DONE]") return;
+    let data: unknown;
+    try {
+      data = JSON.parse(payload);
+    } catch {
+      cb.onChunk(payload);
+      return;
+    }
+    const obj = data as Record<string, unknown>;
+    if (obj.error) {
+      cb.onError(String(obj.error));
+      return;
+    }
+    if (obj.summary && obj.usage) {
+      cb.onDone(obj.summary as StreamSummary);
+      return;
+    }
+    const choices = obj.choices as
+      | { delta?: { content?: string } }[]
+      | undefined;
+    const delta = choices?.[0]?.delta?.content;
+    if (delta) cb.onChunk(delta);
+  };
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf("\n\n")) !== -1) {
+        const frame = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        handleFrame(frame);
+      }
+    }
+    // Tail: flush any trailing frame without a blank line terminator.
+    if (buffer.trim().length > 0) handleFrame(buffer);
+  } catch (e) {
+    cb.onError(e instanceof Error ? e.message : "stream interrupted");
+  }
 }
 
-export async function fetchCatalog(): Promise<Catalog> {
-  const [providers, models] = await Promise.all([
-    fetchProviders(),
-    fetchModels(),
-  ]);
-  return { providers, models };
-}
-
-// micro-USDC (1e-6 USDC) → USDC string, e.g. 2000 → "0.002"
-export function microToUsdc(v: number): string {
-  return (v / 1_000_000).toFixed(6).replace(/\.?0+$/, "");
-}
