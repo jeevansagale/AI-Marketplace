@@ -140,6 +140,7 @@ export default function MarketplacePage() {
               </THead>
               <tbody>
                 {filtered.map((m) => {
+                  console.log("MODEL:", m);
                   const cat = CATEGORY_LABELS[m.category] ?? { label: m.category, tone: "gray" as const };
                   const est = estimateSessionCost(m, 512);
                   return (

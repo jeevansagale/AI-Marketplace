@@ -69,13 +69,19 @@ export function stageLabel(stage: string): string {
 }
 
 /** Provider display name (short). */
-export function providerBadge(providerName: string): string {
+export function providerBadge(providerName?: string): string {
+  if (!providerName) {
+    return "Unknown";
+  }
+
   switch (providerName.toLowerCase()) {
     case "openai":
       return "OpenAI";
+
     case "google":
     case "gemini":
       return "Gemini";
+
     default:
       return providerName;
   }
