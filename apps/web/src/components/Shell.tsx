@@ -2,7 +2,9 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   Plus,
   Wallet,
@@ -10,11 +12,13 @@ import {
   Play,
   LayoutDashboard,
   Radio,
+  X,
 } from "lucide-react";
 import { Button, Card, Badge, Skeleton } from "./ui";
-import { useWallet } from "@/lib/stores/useWallet";
+import { useWalletClient } from "@/lib/stores/useWallet";
 import { api } from "@/lib/api";
 import { formatINR } from "@/lib/format";
+import { PageTransition } from "./PageTransition";
 
 const nav = [
   { href: "/", label: "Overview", icon: LayoutDashboard, exact: true },
@@ -23,8 +27,10 @@ const nav = [
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { balance, loading, error, refresh } = useWallet();
+  const { balance, loading, error, refresh } = useWalletClient();
   const [topupOpen, setTopupOpen] = useState(false);
+  const pathname = usePathname();
+  const reduceMotion = useReducedMotion();
 
   // Live balance refresh every 5s (reservations + refunds land back).
   useEffect(() => {
@@ -34,15 +40,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
   }, [refresh]);
 
   return (
-    <div className="min-h-screen">
-      <header className="sticky top-0 z-30 border-b border-base-700 bg-[#fafbfc]/85 backdrop-blur-sm">
-        <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-4 sm:px-6">
+    <div className="min-h-screen bg-base-950">
+      <header className="sticky top-0 z-30 border-b border-base-700 bg-base-950/90 backdrop-blur-md">
+        <div className="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4 sm:gap-6 sm:px-6">
           {/* Brand */}
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-500 text-white">
+          <Link href="/" className="flex min-w-0 items-center gap-2.5 rounded-md focus-ring">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent-500 text-white shadow-[0_1px_1px_rgb(15_23_42_/_0.12)]">
               <Radio className="h-4 w-4" />
             </div>
-            <span className="text-sm font-semibold tracking-tight text-base-100">
+            <span className="truncate text-sm font-semibold text-base-100">
               x402 Marketplace
             </span>
           </Link>
@@ -53,7 +59,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <Link
                 key={href}
                 href={href}
-                className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-[13px] font-medium text-base-300 transition-colors hover:bg-base-800 hover:text-base-100"
+                aria-current={(exact ? pathname === href : pathname.startsWith(href)) ? "page" : undefined}
+                className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors duration-150 ease-out focus-ring ${
+                  (exact ? pathname === href : pathname.startsWith(href))
+                    ? "bg-base-900 text-base-100 shadow-[inset_0_0_0_1px_var(--border-subtle)]"
+                    : "text-base-300 hover:bg-base-800 hover:text-base-100"
+                }`}
               >
                 <Icon className="h-3.5 w-3.5" />
                 {label}
@@ -65,21 +76,21 @@ export function Shell({ children }: { children: React.ReactNode }) {
             {/* Live wallet pill */}
             <Link
               href="/wallet"
-              className="group flex items-center gap-2.5 rounded-lg border border-base-700 bg-base-900 px-3 py-1.5 transition-colors hover:border-base-600"
+              className="group flex min-w-0 items-center gap-2.5 rounded-md border border-base-700 bg-base-900 px-3 py-1.5 transition-[border-color,box-shadow,background-color] duration-150 ease-out hover:border-base-600 hover:bg-base-850 focus-ring"
             >
-              <Wallet className="h-3.5 w-3.5 text-base-400" />
+              <Wallet className="h-3.5 w-3.5 shrink-0 text-base-400" />
               {loading && !balance ? (
                 <Skeleton className="h-4 w-20" />
               ) : balance ? (
-                <span className="font-mono text-[13px] font-medium tabular-nums text-base-100">
-                  {formatINR(balance.available ?? 0)}
+                <span className="truncate font-mono text-[13px] font-medium tabular-nums text-base-100">
+                  {formatINR(balance.available_paise ?? 0)}
                 </span>
               ) : (
                 <span className="text-[13px] text-base-400">{error ?? "—"}</span>
               )}
-              {balance && balance.reserved > 0 && (
+              {balance && balance.reserved_paise > 0 && (
                 <span className="font-mono text-[11px] text-warn-400">
-                  ({formatINR(balance.reserved)} held)
+                  ({formatINR(balance.reserved_paise)} held)
                 </span>
               )}
             </Link>
@@ -90,9 +101,33 @@ export function Shell({ children }: { children: React.ReactNode }) {
             </Button>
           </div>
         </div>
+        <nav className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 pb-2 md:hidden">
+          {nav.map(({ href, label, icon: Icon, exact }) => {
+            const active = exact ? pathname === href : pathname.startsWith(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                aria-current={active ? "page" : undefined}
+                className={`inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-[13px] font-medium transition-colors duration-150 ease-out focus-ring ${
+                  active
+                    ? "bg-base-900 text-base-100 shadow-[inset_0_0_0_1px_var(--border-subtle)]"
+                    : "text-base-300 hover:bg-base-800 hover:text-base-100"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </Link>
+            );
+          })}
+        </nav>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">{children}</main>
+      <PageTransition>
+        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+          {children}
+        </main>
+      </PageTransition>
 
       {topupOpen && (
         <TopUpModal
@@ -141,25 +176,29 @@ export function TopUpModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f172a]/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f172a]/45 p-4 backdrop-blur-[2px]"
       onClick={() => step !== "paying" && onClose()}
+      role="presentation"
     >
       <Card
-        className="w-full max-w-sm"
+        className="surface-raised w-full max-w-sm overflow-hidden"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="topup-title"
       >
         <div className="px-5 py-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-base-100">Top up wallet</h3>
+            <h3 id="topup-title" className="text-sm font-semibold text-base-100">Top up wallet</h3>
             <button
               onClick={onClose}
-              className="rounded-md p-1 text-base-400 transition-colors hover:bg-base-800 hover:text-base-100"
+              className="rounded-md p-1.5 text-base-400 transition-colors duration-150 ease-out hover:bg-base-800 hover:text-base-100 focus-ring"
               aria-label="Close"
             >
-              ✕
+              <X className="h-4 w-4" />
             </button>
           </div>
-          <p className="mt-1 text-xs text-base-400">
+          <p className="mt-1 text-xs leading-relaxed text-base-400">
             Real payments via the provider abstraction — verify callback before credit.
           </p>
         </div>
@@ -172,10 +211,10 @@ export function TopUpModal({
                   <button
                     key={p}
                     onClick={() => setAmount(p)}
-                    className={`rounded-lg border px-2 py-2 font-mono text-[13px] font-medium transition-colors ${
+                    className={`rounded-md border px-2 py-2 font-mono text-[13px] font-medium transition-[border-color,background-color,color,transform] duration-150 ease-out active:scale-[0.98] focus-ring ${
                       amount === p
                         ? "border-accent-500/50 bg-accent-500/10 text-accent-400"
-                        : "border-base-700 bg-base-800 text-base-200 hover:border-base-600"
+                        : "border-base-700 bg-base-900 text-base-200 hover:border-base-600 hover:bg-base-850"
                     }`}
                   >
                     ₹{p}
@@ -184,7 +223,7 @@ export function TopUpModal({
               </div>
               <label className="block">
                 <span className="text-xs text-base-400">Amount</span>
-                <div className="mt-1 flex items-center gap-2 rounded-lg border border-base-700 bg-base-900 px-3">
+                <div className="field mt-1 flex items-center gap-2 rounded-md px-3">
                   <span className="text-sm text-base-400">₹</span>
                   <input
                     type="number"

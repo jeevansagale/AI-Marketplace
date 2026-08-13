@@ -2,6 +2,7 @@
 "use client";
 
 import { forwardRef, type HTMLAttributes, type ReactNode, type ButtonHTMLAttributes } from "react";
+import { motion, type HTMLMotionProps } from "framer-motion";
 import { Loader2 } from "lucide-react";
 
 /* ---- Button ---- */
@@ -9,13 +10,13 @@ type Variant = "primary" | "secondary" | "ghost" | "danger";
 
 const variantClass: Record<Variant, string> = {
   primary:
-    "bg-accent-500 text-white hover:bg-accent-600 focus-visible:ring-accent-400/40",
+    "bg-accent-500 text-white hover:bg-accent-600 active:bg-accent-700 focus-visible:ring-accent-400/40",
   secondary:
-    "bg-base-800 text-base-200 hover:bg-base-700 hover:text-base-100 border border-base-700",
+    "bg-base-800 text-base-200 hover:bg-base-700 hover:text-base-100 active:bg-base-600 border border-base-700",
   ghost:
-    "text-base-300 hover:text-base-100 hover:bg-base-800",
+    "text-base-300 hover:text-base-100 hover:bg-base-800 active:bg-base-700",
   danger:
-    "bg-neg-400/10 text-neg-400 hover:bg-neg-400/20 border border-neg-400/20",
+    "bg-neg-400/10 text-neg-400 hover:bg-neg-400/20 active:bg-neg-400/30 border border-neg-400/20",
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -29,15 +30,18 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     const sizeClass =
       size === "sm" ? "h-8 px-3 text-[13px]" : "h-9 px-4 text-sm";
     return (
-      <button
+      <motion.button
         ref={ref}
         disabled={disabled || loading}
-        className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:opacity-50 disabled:pointer-events-none ${sizeClass} ${variantClass[variant]} ${className}`}
-        {...rest}
+        whileTap={disabled || loading ? undefined : { scale: 0.98 }}
+        whileHover={disabled || loading ? undefined : { scale: 1.02 }}
+        transition={{ duration: 0.12, ease: "easeOut" }}
+        className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 disabled:opacity-50 disabled:pointer-events-none ${sizeClass} ${variantClass[variant]} ${className}`}
+        {...(rest as Omit<HTMLMotionProps<"button">, "ref" | "disabled" | "whileTap" | "whileHover" | "transition" | "className">)}
       >
         {loading && <Loader2 className="h-4 w-4 animate-spin" />}
         {children}
-      </button>
+      </motion.button>
     );
   },
 );
@@ -156,7 +160,7 @@ export function TRow({
   return (
     <tr
       onClick={onClick}
-      className={`border-b border-base-200 transition-colors last:border-0 hover:bg-base-800/60 ${onClick ? "cursor-pointer" : ""} ${className}`}
+      className={`border-b border-base-200 transition-colors duration-150 last:border-0 hover:bg-base-800/60 ${onClick ? "cursor-pointer" : ""} ${className}`}
     >
       {children}
     </tr>
@@ -188,4 +192,66 @@ export function EmptyState({
       {action && <div className="mt-4">{action}</div>}
     </div>
   );
+}
+
+/* ---- Input ---- */
+export function Input({
+  className = "",
+  ...props
+}: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      className={`field h-9 w-full rounded-md px-3 text-sm text-base-100 outline-none placeholder:text-base-500 transition-colors duration-150 ${className}`}
+      {...props}
+    />
+  );
+}
+
+/* ---- Textarea ---- */
+export function Textarea({
+  className = "",
+  ...props
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      className={`field w-full resize-none rounded-md px-3 py-2 text-sm leading-relaxed text-base-100 outline-none placeholder:text-base-500 transition-colors duration-150 ${className}`}
+      {...props}
+    />
+  );
+}
+
+/* ---- Select ---- */
+export function Select({
+  className = "",
+  ...props
+}: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      className={`field h-9 w-full rounded-md px-3 text-sm text-base-100 outline-none transition-colors duration-150 ${className}`}
+      {...props}
+    />
+  );
+}
+
+/* ---- Label ---- */
+export function Label({
+  className = "",
+  children,
+  ...props
+}: React.LabelHTMLAttributes<HTMLLabelElement>) {
+  return (
+    <label className={`block text-xs text-base-400 ${className}`} {...props}>
+      {children}
+    </label>
+  );
+}
+
+/* ---- Separator ---- */
+export function Separator({ className = "" }: { className?: string }) {
+  return <hr className={`border-base-700 ${className}`} />;
+}
+
+/* ---- Field wrapper ---- */
+export function Field({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={`flex flex-col gap-1.5 ${className}`}>{children}</div>;
 }

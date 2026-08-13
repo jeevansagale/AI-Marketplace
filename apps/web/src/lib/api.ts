@@ -34,17 +34,17 @@ export interface Catalog {
 }
 
 export interface WalletBalance {
-  balance: number; // paise
-  reserved: number; // paise
-  available: number; // paise
+  balance_paise: number; // paise
+  reserved_paise: number; // paise
+  available_paise: number; // paise
 }
 
 export interface WalletTx {
   id: string;
   kind: string;
-  amount: number; // paise (signed: negative = spend)
+  amount_paise: number; // paise (signed: negative = spend)
   reference: string;
-  created_at: string;
+  timestamp: string;
 }
 
 export interface SessionEvent {

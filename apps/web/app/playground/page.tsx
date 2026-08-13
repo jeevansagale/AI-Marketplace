@@ -4,13 +4,14 @@ import { Suspense, useEffect, useMemo, useRef, useState, useCallback } from "rea
 import { useSearchParams } from "next/navigation";
 import {
   Play, Square, Loader2, Wallet, Zap, Activity, CheckCircle2,
-  Clock, ArrowRight, ShieldCheck, Badge as BadgeIcon,
+  Clock, ShieldCheck,
 } from "lucide-react";
 import { Shell } from "@/components/Shell";
-import { Button, Card, Badge, Skeleton, EmptyState } from "@/components/ui";
-import { api, streamSession, type MarketModel, type Session, type SessionEvent } from "@/lib/api";
+import { Button, Card, Badge, Skeleton, EmptyState, Label, Field, Textarea, Select } from "@/components/ui";
+import { api, streamSession, type MarketModel, type Session } from "@/lib/api";
 import { formatINR, estimateSessionCost, stageLabel, providerBadge } from "@/lib/format";
-import { useWallet } from "@/lib/stores/useWallet";
+import { useWalletClient } from "@/lib/stores/useWallet";
+import { StaggeredItem } from "@/components/PageTransition";
 
 const STAGE_ORDER = ["requested", "authorized", "reserved", "streaming", "completed", "settled", "refunded"];
 
@@ -74,7 +75,7 @@ function SessionTimeline({ session }: { session: Session }) {
 function PlaygroundPage() {
   const searchParams = useSearchParams();
   const models = useCatalog();
-  const { balance, refresh } = useWallet();
+  const { balance, refresh } = useWalletClient();
 
   const [model, setModel] = useState<string>("");
   const [temp, setTemp] = useState(0.7);
@@ -172,190 +173,200 @@ function PlaygroundPage() {
 
   return (
     <Shell>
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-base-100">Playground</h1>
-          <p className="mt-1 text-sm text-base-400">
-            Pay-per-session AI inference. Funds are reserved, consumed, and refunded automatically.
-          </p>
-        </div>
-        {selectedModel && (
-          <Badge tone="blue" dot>{providerBadge(selectedModel.provider_name)} · {selectedModel.name}</Badge>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[280px_minmax(0,1fr)_300px]">
-        {/* ---- Left sidebar: model + config + reserve ---- */}
-        <Card className="h-fit">
-          <div className="border-b border-base-700 px-5 py-4">
-            <h2 className="text-sm font-semibold text-base-100">Session</h2>
+      <StaggeredItem index={0}>
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-base-100">Playground</h1>
+            <p className="mt-1 text-sm text-base-400">
+              Pay-per-session AI inference. Funds are reserved, consumed, and refunded automatically.
+            </p>
           </div>
-          <div className="space-y-4 px-5 py-4">
-            {/* Model select */}
-            <label className="block">
-              <span className="text-xs text-base-400">Model</span>
-              <select
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                disabled={running}
-                className="mt-1 h-9 w-full rounded-lg border border-base-700 bg-base-900 px-3 text-sm text-base-100 outline-none focus:border-accent-500/50 disabled:opacity-50"
-              >
-                {models === null && <option>Loading…</option>}
-                {models?.map((m) => (
-                  <option key={m.id} value={m.name}>{m.name}</option>
-                ))}
-              </select>
-            </label>
-
-            {/* Temperature */}
-            <label className="block">
-              <span className="flex items-center justify-between text-xs text-base-400">
-                <span>Temperature</span>
-                <span className="font-mono text-base-200">{temp.toFixed(1)}</span>
-              </span>
-              <input
-                type="range" min={0} max={1} step={0.1} value={temp}
-                onChange={(e) => setTemp(Number(e.target.value))}
-                disabled={running}
-                className="mt-2 h-1.5 w-full accent-accent-500"
-              />
-            </label>
-
-            {/* Max tokens */}
-            <label className="block">
-              <span className="flex items-center justify-between text-xs text-base-400">
-                <span>Max tokens</span>
-                <span className="font-mono text-base-200">{maxTokens}</span>
-              </span>
-              <input
-                type="range" min={64} max={2048} step={64} value={maxTokens}
-                onChange={(e) => setMaxTokens(Number(e.target.value))}
-                disabled={running}
-                className="mt-2 h-1.5 w-full accent-accent-500"
-              />
-            </label>
-
-            {/* Cost estimate + reserve */}
-            {selectedModel && (
-              <div className="space-y-2 rounded-lg border border-base-700 bg-base-900 p-3">
-                <div className="flex items-center justify-between text-[13px]">
-                  <span className="text-base-400">Est. session cost</span>
-                  <span className="font-mono font-medium text-base-100">{formatINR(reserve)}</span>
-                </div>
-                <div className="flex items-center justify-between text-[13px]">
-                  <span className="text-base-400">Session reserve</span>
-                  <span className="font-mono font-medium text-warn-400">{formatINR(reserve)}</span>
-                </div>
-                <div className="flex items-center justify-between border-t border-base-700 pt-2 text-[13px]">
-                  <span className="flex items-center gap-1.5 text-base-400">
-                    <Wallet className="h-3.5 w-3.5" /> Available
-                  </span>
-                  <span className="font-mono font-medium text-pos-400">
-                    {balance ? formatINR(balance.available) : "—"}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Prompt */}
-            <label className="block">
-              <span className="text-xs text-base-400">Prompt</span>
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                disabled={running}
-                rows={5}
-                placeholder="Ask anything…"
-                className="mt-1 w-full resize-none rounded-lg border border-base-700 bg-base-900 px-3 py-2 text-sm text-base-100 outline-none focus:border-accent-500/50 disabled:opacity-50"
-              />
-            </label>
-
-            <div className="flex gap-2">
-              <Button className="flex-1" onClick={start} loading={running && !session}>
-                <Play className="h-4 w-4" /> {running ? "Streaming…" : "Start session"}
-              </Button>
-              {running && (
-                <Button variant="secondary" onClick={cancel} aria-label="Stop">
-                  <Square className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-
-            {error && (
-              <p className="rounded-lg border border-neg-400/20 bg-neg-400/10 px-3 py-2 text-xs text-neg-400">
-                {error}
-              </p>
-            )}
-          </div>
-        </Card>
-
-        {/* ---- Center: output ---- */}
-        <Card className="flex min-h-[480px] flex-col">
-          <div className="flex items-center justify-between border-b border-base-700 px-5 py-4">
-            <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-base-400" />
-              <h2 className="text-sm font-semibold text-base-100">Streaming output</h2>
-            </div>
-            {running && <Badge tone="amber" dot>Live</Badge>}
-          </div>
-          <div
-            ref={outRef}
-            className="flex-1 overflow-y-auto p-5"
-            style={{ maxHeight: "560px" }}
-          >
-            {output ? (
-              <div className="whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-base-100">
-                {output}
-              </div>
-            ) : running ? (
-              <div className="flex items-center gap-2 text-sm text-base-400">
-                <Loader2 className="h-4 w-4 animate-spin" /> Waiting for tokens…
-              </div>
-            ) : (
-              <div className="flex h-full items-center justify-center">
-                <EmptyState
-                  icon={<Zap className="h-8 w-8" />}
-                  title="Run a session to see streaming output"
-                  body="Your prompt is billed at the metered rate and refunded automatically."
-                />
-              </div>
-            )}
-          </div>
-          {summary && (
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-base-700 px-5 py-3 text-xs text-base-400">
-              <span>Charged <b className="font-mono text-base-200">{formatINR(summary.actual)}</b></span>
-              {summary.refunded > 0 && (
-                <span>Refunded <b className="font-mono text-pos-400">+{formatINR(summary.refunded)}</b></span>
-              )}
-              <span>{summary.prompt} prompt tokens</span>
-              <span>{summary.completion} completion</span>
-              <span className="font-mono">{summary.latency} ms</span>
-            </div>
+          {selectedModel && (
+            <Badge tone="blue" dot>{providerBadge(selectedModel.provider_name)} · {selectedModel.name}</Badge>
           )}
-        </Card>
+        </div>
+      </StaggeredItem>
 
-        {/* ---- Right sidebar: timeline + recent activity ---- */}
-        <div className="space-y-5">
-          <Card>
-            <div className="flex items-center justify-between border-b border-base-700 px-5 py-4">
-              <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-base-400" />
-                <h2 className="text-sm font-semibold text-base-100">Session timeline</h2>
-              </div>
-              {session && <Badge tone={session.stage === "failed" ? "red" : "blue"}>{session.stage}</Badge>}
+      <StaggeredItem index={1}>
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[300px_minmax(0,1fr)_310px]">
+          {/* ---- Left sidebar: model + config + reserve ---- */}
+          <Card className="h-fit overflow-hidden lg:sticky lg:top-20">
+            <div className="border-b border-base-700 px-5 py-4">
+              <h2 className="text-sm font-semibold text-base-100">Session</h2>
             </div>
-            <div className="px-5 py-4">
-              {session ? (
-                <SessionTimeline session={session} />
-              ) : (
-                <p className="text-xs text-base-400">Start a session to see the lifecycle: request → 402 → reserve → stream → settle → refund.</p>
+            <div className="space-y-4 px-5 py-4">
+              {/* Model select */}
+              <Field>
+                <Label>Model</Label>
+                <Select
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  disabled={running}
+                >
+                  {models === null && <option>Loading…</option>}
+                  {models?.map((m) => (
+                    <option key={m.id} value={m.name}>{m.name}</option>
+                  ))}
+                </Select>
+              </Field>
+
+              {/* Temperature */}
+              <Field>
+                <Label>
+                  <span className="flex items-center justify-between">
+                    <span>Temperature</span>
+                    <span className="font-mono text-base-200">{temp.toFixed(1)}</span>
+                  </span>
+                </Label>
+                <input
+                  type="range" min={0} max={1} step={0.1} value={temp}
+                  onChange={(e) => setTemp(Number(e.target.value))}
+                  disabled={running}
+                  className="mt-2 h-1.5 w-full accent-accent-500 disabled:opacity-50"
+                />
+              </Field>
+
+              {/* Max tokens */}
+              <Field>
+                <Label>
+                  <span className="flex items-center justify-between">
+                    <span>Max tokens</span>
+                    <span className="font-mono text-base-200">{maxTokens}</span>
+                  </span>
+                </Label>
+                <input
+                  type="range" min={64} max={2048} step={64} value={maxTokens}
+                  onChange={(e) => setMaxTokens(Number(e.target.value))}
+                  disabled={running}
+                  className="mt-2 h-1.5 w-full accent-accent-500 disabled:opacity-50"
+                />
+              </Field>
+
+              {/* Cost estimate + reserve */}
+              {selectedModel && (
+                <div className="space-y-2 rounded-md border border-base-700 bg-base-850 p-3">
+                  <div className="flex items-center justify-between text-[13px]">
+                    <span className="text-base-400">Est. session cost</span>
+                    <span className="font-mono font-medium text-base-100">{formatINR(reserve)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[13px]">
+                    <span className="text-base-400">Session reserve</span>
+                    <span className="font-mono font-medium text-warn-400">{formatINR(reserve)}</span>
+                  </div>
+                   <div className="flex items-center justify-between border-t border-base-700 pt-2 text-[13px]">
+                     <span className="flex items-center gap-1.5 text-base-400">
+                       <Wallet className="h-3.5 w-3.5" /> Available
+                     </span>
+                     <span className="font-mono font-medium text-pos-400">
+                       {balance ? formatINR(balance.available_paise) : "—"}
+                     </span>
+                   </div>
+                </div>
+              )}
+
+              {/* Prompt */}
+              <Field>
+                <Label>Prompt</Label>
+                <Textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  disabled={running}
+                  rows={5}
+                  placeholder="Ask anything…"
+                />
+              </Field>
+
+              <div className="flex gap-2">
+                <Button className="flex-1" onClick={start} loading={running && !session}>
+                  <Play className="h-4 w-4" /> {running ? "Streaming…" : "Start session"}
+                </Button>
+                {running && (
+                  <Button variant="secondary" onClick={cancel} aria-label="Stop">
+                    <Square className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+
+              {error && (
+                <p className="rounded-lg border border-neg-400/20 bg-neg-400/10 px-3 py-2 text-xs text-neg-400">
+                  {error}
+                </p>
               )}
             </div>
           </Card>
 
-          <RecentActivity />
+          {/* ---- Center: output ---- */}
+          <Card className="flex min-h-[520px] flex-col overflow-hidden">
+            <div className="flex items-center justify-between border-b border-base-700 px-5 py-4">
+              <div className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-base-400" />
+                <h2 className="text-sm font-semibold text-base-100">Streaming output</h2>
+              </div>
+              {running && <Badge tone="amber" dot>Live</Badge>}
+            </div>
+            <div
+              ref={outRef}
+              className="flex-1 overflow-y-auto bg-base-900 p-5"
+              style={{ maxHeight: "560px" }}
+            >
+              {output ? (
+                <div className="whitespace-pre-wrap font-mono text-[13px] leading-6 text-base-100">
+                  {output}
+                </div>
+              ) : running ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm text-base-400">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Waiting for tokens…
+                  </div>
+                  <Skeleton className="h-3 w-11/12" />
+                  <Skeleton className="h-3 w-8/12" />
+                </div>
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <EmptyState
+                    icon={<Zap className="h-8 w-8" />}
+                    title="Run a session to see streaming output"
+                    body="Your prompt is billed at the metered rate and refunded automatically."
+                  />
+                </div>
+              )}
+            </div>
+            {summary && (
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-base-700 bg-base-850 px-5 py-3 text-xs text-base-400">
+                <span>Charged <b className="font-mono text-base-200">{formatINR(summary.actual)}</b></span>
+                {summary.refunded > 0 && (
+                  <span>Refunded <b className="font-mono text-pos-400">+{formatINR(summary.refunded)}</b></span>
+                )}
+                <span>{summary.prompt} prompt tokens</span>
+                <span>{summary.completion} completion</span>
+                <span className="font-mono">{summary.latency} ms</span>
+              </div>
+            )}
+          </Card>
+
+          {/* ---- Right sidebar: timeline + recent activity ---- */}
+          <div className="space-y-5 lg:sticky lg:top-20 lg:h-fit">
+            <Card className="overflow-hidden">
+              <div className="flex items-center justify-between border-b border-base-700 px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-base-400" />
+                  <h2 className="text-sm font-semibold text-base-100">Session timeline</h2>
+                </div>
+                {session && <Badge tone={session.stage === "failed" ? "red" : "blue"}>{session.stage}</Badge>}
+              </div>
+              <div className="px-5 py-4">
+                {session ? (
+                  <SessionTimeline session={session} />
+                ) : (
+                  <p className="text-xs leading-relaxed text-base-400">Start a session to see the lifecycle: request → 402 → reserve → stream → settle → refund.</p>
+                )}
+              </div>
+            </Card>
+
+            <RecentActivity />
+          </div>
         </div>
-      </div>
+      </StaggeredItem>
     </Shell>
   );
 }
@@ -389,7 +400,7 @@ function RecentActivity() {
         const [s, b] = await Promise.all([api.sessions(), api.wallet()]);
         if (!mounted) return;
         setSessions(s.sessions.slice(0, 5));
-        setBalance(b.available);
+        setBalance(b.available_paise);
       } catch { /* ignore */ }
     };
     void load();

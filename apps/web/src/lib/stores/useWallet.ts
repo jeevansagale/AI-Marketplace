@@ -3,6 +3,7 @@
 "use client";
 
 import { create } from "zustand";
+import React from "react";
 import { api, type WalletBalance, type WalletTx } from "../api";
 
 interface WalletState {
@@ -50,3 +51,23 @@ export const useWallet = create<WalletState>((set, get) => ({
     }
   },
 }));
+
+// Client-side only hook to avoid hydration mismatch
+export function useWalletClient() {
+  const store = useWallet();
+  const [mounted, setMounted] = React.useState(false);
+  
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+  
+  if (!mounted) {
+    return {
+      ...store,
+      balance: null,
+      loading: true,
+    };
+  }
+  
+  return store;
+}
