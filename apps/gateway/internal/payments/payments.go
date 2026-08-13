@@ -26,10 +26,10 @@ type Provider interface {
 
 // Order is a payment order returned by a provider.
 type Order struct {
-	ID         string `json:"id"`
-	AmountPaise int64 `json:"amount_paise"`
-	Status     string `json:"status"`
-	Checkout   string `json:"checkout_url,omitempty"`
+	ID          string `json:"id"`
+	AmountPaise int64  `json:"amount_paise"`
+	Status      string `json:"status"`
+	Checkout    string `json:"checkout_url,omitempty"`
 }
 
 // ErrInvalidCallback indicates a callback signature/amount mismatch.
@@ -39,10 +39,10 @@ var ErrInvalidCallback = errors.New("payments: invalid callback")
 // hackathon demo. Orders auto-approve after a short delay so the UI can show
 // the full top-up lifecycle without real money.
 type DemoProvider struct {
-	mu      sync.Mutex
-	next    int
-	orders  map[string]Order
-	env     map[string]string // envelope: amount_expected → wallet id
+	mu     sync.Mutex
+	next   int
+	orders map[string]Order
+	env    map[string]string // envelope: amount_expected → wallet id
 }
 
 // NewDemoProvider returns a demo payment provider.

@@ -3,7 +3,8 @@
 
 /** "₹100.00" — Indian number grouping (lakh/crore) via Intl. */
 export function formatINR(paise: number): string {
-  const rupees = paise / 100;
+  const validPaise = Number.isNaN(Number(paise)) ? 0 : Number(paise);
+  const rupees = validPaise / 100;
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
@@ -25,22 +26,26 @@ export function formatSigned(paise: number): string {
 
 /** Estimated session cost for a model: base + prompt estimate (64 tokens) + completion estimate (maxTokens). */
 export function estimateSessionCost(
-  m: { price_base: number; price_prompt: number; price_completion: number },
+  m: { price_base_paise: number; price_prompt_paise: number; price_completion_paise: number },
   maxTokens: number,
 ): number {
+  const base = Number(m.price_base_paise) || 0;
+  const prompt = Number(m.price_prompt_paise) || 0;
+  const completion = Number(m.price_completion_paise) || 0;
+  const tokens = Number(maxTokens) || 0;
+
   return (
-    m.price_base +
-    Math.round((64 * m.price_prompt) / 1000) +
-    Math.round((maxTokens * m.price_completion) / 1000)
+    base +
+    Math.round((64 * prompt) / 1000) +
+    Math.round((tokens * completion) / 1000)
   );
 }
 
 /** Session reserve shown at checkout — mirrors the backend reservation. */
-export function sessionReserve(m: {
-  price_base: number;
-  price_prompt: number;
-  price_completion: number;
-}, maxTokens: number): number {
+export function sessionReserve(
+  m: { price_base_paise: number; price_prompt_paise: number; price_completion_paise: number },
+  maxTokens: number,
+): number {
   return estimateSessionCost(m, maxTokens);
 }
 

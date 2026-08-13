@@ -17,7 +17,6 @@ type ProviderKind string
 const (
 	ProviderKindGemini ProviderKind = "gemini"
 	ProviderKindOpenAI ProviderKind = "openai"
-	ProviderKindMock   ProviderKind = "mock"
 )
 
 // Provider is an AI provider registered on the marketplace.
@@ -40,7 +39,7 @@ type Model struct {
 	ProviderID      string  `json:"provider_id"`
 	Name            string  `json:"name"`
 	Slug            string  `json:"slug"`
-	Category        string  `json:"category"` // chat | vision | ocr | embeddings | audio
+	Category        string  `json:"category"` // chat | vision
 	Description     string  `json:"description"`
 	ContextWindow   int     `json:"context_window"`
 	PriceBase       int64   `json:"price_base_paise"`       // flat per-request fee
@@ -74,31 +73,23 @@ func ConvertUSDCToPaise(microUSDC int64) int64 {
 }
 
 func defaultProviders() []Provider {
-	base := "https://generativelanguage.googleapis.com/v1beta"
+	geminiBase := "https://generativelanguage.googleapis.com/v1beta"
 	openAIBase := "https://api.openai.com/v1"
 	return []Provider{
-		{ID: "10000000-0000-0000-0000-000000000001", Name: "Vertex Labs", Slug: "vertexlabs", Kind: ProviderKindOpenAI, BaseURL: openAIBase, APIKeyEnv: "OMNI_OPENAI_API_KEY", Wallet: "TESTNETWALLETNOVA000000000000000000000000000000", Status: "active", Reputation: 0.98},
-		{ID: "10000000-0000-0000-0000-000000000002", Name: "Gemini Works", Slug: "geminiworks", Kind: ProviderKindGemini, BaseURL: base, APIKeyEnv: "OMNI_GEMINI_API_KEY", Wallet: "TESTNETWALLETALGO00000000000000000000000000000", Status: "active", Reputation: 0.96},
-		{ID: "10000000-0000-0000-0000-000000000003", Name: "TensorGrid", Slug: "tensorgrid", Kind: ProviderKindOpenAI, BaseURL: openAIBase, APIKeyEnv: "OMNI_OPENAI_API_KEY", Wallet: "TESTNETWALLETTENSOR000000000000000000000000000", Status: "active", Reputation: 0.94},
-		{ID: "10000000-0000-0000-0000-000000000004", Name: "VisionForge", Slug: "visionforge", Kind: ProviderKindOpenAI, BaseURL: openAIBase, APIKeyEnv: "OMNI_OPENAI_API_KEY", Wallet: "TESTNETWALLETVISION000000000000000000000000000", Status: "active", Reputation: 0.92},
-		{ID: "10000000-0000-0000-0000-000000000005", Name: "VectorHaven", Slug: "vectorhaven", Kind: ProviderKindOpenAI, BaseURL: openAIBase, APIKeyEnv: "OMNI_OPENAI_API_KEY", Wallet: "TESTNETWALLETVECTOR000000000000000000000000000", Status: "active", Reputation: 0.97},
-		{ID: "10000000-0000-0000-0000-000000000006", Name: "AudioWave", Slug: "audiowave", Kind: ProviderKindMock, BaseURL: "", APIKeyEnv: "", Wallet: "TESTNETWALLETAUDIO0000000000000000000000000000", Status: "paused", Reputation: 0.89},
+		{ID: "10000000-0000-0000-0000-000000000001", Name: "Gemini", Slug: "gemini", Kind: ProviderKindGemini, BaseURL: geminiBase, APIKeyEnv: "OMNI_GEMINI_API_KEY", Wallet: "TESTNETWALLETGEMINI00000000000000000000000000", Status: "active", Reputation: 0.98},
+		{ID: "10000000-0000-0000-0000-000000000002", Name: "OpenAI", Slug: "openai", Kind: ProviderKindOpenAI, BaseURL: openAIBase, APIKeyEnv: "OMNI_OPENAI_API_KEY", Wallet: "TESTNETWALLETOPENAI00000000000000000000000000", Status: "active", Reputation: 0.99},
 	}
 }
 
 // defaultModels returns the canonical model catalog in paise (INR) per 1K tokens.
 func defaultModels() []Model {
 	return []Model{
-		{"20000000-0000-0000-0000-000000000001", "10000000-0000-0000-0000-000000000001", "Vertex Llama 3.3 70B", "vertex-llama-3.3-70b-instruct", "chat", "Flagship Llama 3.3 70B - best quality per rupee.", 131072, 12, 1, 4, "Vertex Labs", 380, 85.4, true},
-		{"20000000-0000-0000-0000-000000000002", "10000000-0000-0000-0000-000000000001", "Vertex Llama 3.1 8B", "vertex-llama-3.1-8b-instruct", "chat", "Fast 8B instruct for cost-sensitive workloads.", 131072, 6, 1, 2, "Vertex Labs", 140, 220.0, true},
-		{"20000000-0000-0000-0000-000000000003", "10000000-0000-0000-0000-000000000002", "Gemini 2.0 Flash", "gemini-2.0-flash", "chat", "Low-latency Gemini generation.", 1048576, 10, 2, 3, "Gemini Works", 480, 96.0, true},
-		{"20000000-0000-0000-0000-000000000004", "10000000-0000-0000-0000-000000000003", "TensorGrid Mixtral 8x7B", "tensorgrid-mixtral-8x7b", "chat", "Sparse MoE - high throughput.", 32768, 8, 1, 3, "TensorGrid", 210, 150.0, true},
-		{"20000000-0000-0000-0000-000000000005", "10000000-0000-0000-0000-000000000001", "Vertex Qwen 2.5 72B", "vertex-qwen-2.5-72b", "chat", "Multilingual 72B assistant.", 131072, 12, 1, 4, "Vertex Labs", 470, 62.0, true},
-		{"20000000-0000-0000-0000-000000000006", "10000000-0000-0000-0000-000000000004", "VisionForge GPT-4o Vision", "visionforge-gpt-4o-vision-class", "vision", "Image understanding and captioning.", 128000, 50, 5, 8, "VisionForge", 850, 25.0, true},
-		{"20000000-0000-0000-0000-000000000007", "10000000-0000-0000-0000-000000000004", "VisionForge YOLO OCR", "visionforge-yolo-v11-ocr", "ocr", "Scene-text OCR with bounding boxes.", 4096, 30, 4, 6, "VisionForge", 620, 30.0, true},
-		{"20000000-0000-0000-0000-000000000008", "10000000-0000-0000-0000-000000000005", "VectorHaven Text Embedding 3", "vectorhaven-text-embedding-3", "embeddings", "768-dim dense embeddings for RAG.", 8192, 4, 1, 0, "VectorHaven", 90, 400.0, true},
-		{"20000000-0000-0000-0000-000000000009", "10000000-0000-0000-0000-000000000005", "VectorHaven BGE-M3", "vectorhaven-bge-m3", "embeddings", "Multilingual embedding model.", 8192, 4, 1, 0, "VectorHaven", 100, 380.0, true},
-		{"20000000-0000-0000-0000-000000000010", "10000000-0000-0000-0000-000000000006", "AudioWave Whisper v3", "audiowave-whisper-large-v3", "audio", "Speech-to-text transcription.", 262144, 60, 10, 0, "AudioWave", 1200, 12.0, false},
+		{"20000000-0000-0000-0000-000000000001", "10000000-0000-0000-0000-000000000001", "Gemini 2.0 Flash", "gemini-2.0-flash", "chat", "Low-latency multimodal generation with 1M token context.", 1048576, 10, 2, 3, "Gemini", 380, 96.0, true},
+		{"20000000-0000-0000-0000-000000000002", "10000000-0000-0000-0000-000000000001", "Gemini 1.5 Flash", "gemini-1.5-flash", "chat", "Fast and versatile performance for high-frequency workloads.", 1048576, 8, 1, 2, "Gemini", 250, 120.0, true},
+		{"20000000-0000-0000-0000-000000000003", "10000000-0000-0000-0000-000000000001", "Gemini 1.5 Pro", "gemini-1.5-pro", "chat", "Mid-tier reasoning model for complex tasks with 2M token context.", 2097152, 25, 5, 15, "Gemini", 650, 45.0, true},
+		{"20000000-0000-0000-0000-000000000004", "10000000-0000-0000-0000-000000000002", "GPT-4o", "gpt-4o", "chat", "Flagship high-intelligence multimodal flagship model.", 128000, 20, 4, 12, "OpenAI", 400, 80.0, true},
+		{"20000000-0000-0000-0000-000000000005", "10000000-0000-0000-0000-000000000002", "GPT-4o Mini", "gpt-4o-mini", "chat", "Affordable, fast small model for lightweight tasks.", 128000, 5, 1, 2, "OpenAI", 180, 160.0, true},
+		{"20000000-0000-0000-0000-000000000006", "10000000-0000-0000-0000-000000000002", "GPT-3.5 Turbo", "gpt-3.5-turbo", "chat", "Legacy fast text model.", 16385, 5, 1, 2, "OpenAI", 200, 140.0, true},
 	}
 }
 
@@ -122,10 +113,23 @@ func (c Catalog) FindProviderByID(id string) (Provider, bool) {
 	return Provider{}, false
 }
 
-// FindModel returns the model for a slug and whether it exists.
-func (c Catalog) FindModel(slug string) (Model, bool) {
+// FindModel returns the model for a slug, ID, or name and whether it exists.
+func (c Catalog) FindModel(identifier string) (Model, bool) {
+	// 1. Exact slug match
 	for _, m := range c.Models {
-		if m.Slug == slug {
+		if m.Slug == identifier {
+			return m, true
+		}
+	}
+	// 2. Exact ID match
+	for _, m := range c.Models {
+		if m.ID == identifier {
+			return m, true
+		}
+	}
+	// 3. Case-insensitive display name match fallback
+	for _, m := range c.Models {
+		if strings.EqualFold(m.Name, identifier) {
 			return m, true
 		}
 	}

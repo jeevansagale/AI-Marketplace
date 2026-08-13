@@ -27,9 +27,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/x402-marketplace/catalog"
 	"github.com/x402-marketplace/gateway/internal/ledger"
-	"github.com/x402-marketplace/gateway/internal/mockprovider"
 	"github.com/x402-marketplace/gateway/internal/payments"
 	"github.com/x402-marketplace/gateway/internal/provider"
 	"github.com/x402-marketplace/gateway/internal/session"
@@ -68,8 +68,16 @@ type gateway struct {
 }
 
 func main() {
-	addr := envOr("OMNI_HTTP_ADDR", ":8080")
 	logger := log.New(os.Stdout, "[gateway] ", log.LstdFlags)
+
+	// Load .env automatically on local startup.
+	_ = godotenv.Load()            // Try current directory
+	_ = godotenv.Load("../.env")   // Try parent directory
+	_ = godotenv.Load("../../.env") // Try grandparent directory
+
+	logger.Println("✓ Loaded .env (if present)")
+
+	addr := envOr("OMNI_HTTP_ADDR", ":8080")
 
 	st := store.New()
 	st.SeedDemo()
@@ -80,7 +88,28 @@ func main() {
 	// Seed the demo INR wallet (₹100.00).
 	wallets := wallet.NewService(map[string]int64{wallet.DemoWalletID: 100_00})
 
-	reg := provider.NewRegistry(cat, os.Getenv("OMNI_OPENAI_API_KEY"), os.Getenv("OMNI_GEMINI_API_KEY"))
+	geminiKey := os.Getenv("OMNI_GEMINI_API_KEY")
+	if geminiKey == "" {
+		geminiKey = os.Getenv("GEMINI_API_KEY")
+	}
+	openAIKey := os.Getenv("OMNI_OPENAI_API_KEY")
+	if openAIKey == "" {
+		openAIKey = os.Getenv("OPENAI_API_KEY")
+	}
+
+	if geminiKey == "" {
+		logger.Fatal("FATAL:\nOMNI_GEMINI_API_KEY is missing.\n\nCreate a .env file or export the environment variable.")
+	} else {
+		logger.Println("✓ Gemini API key detected")
+	}
+
+	if openAIKey == "" {
+		logger.Fatal("FATAL:\nOMNI_OPENAI_API_KEY is missing.\n\nCreate a .env file or export the environment variable.")
+	} else {
+		logger.Println("✓ OpenAI API key detected")
+	}
+
+	reg := provider.NewRegistry(cat, openAIKey, geminiKey)
 	settle := settlement.NewInternalDriver(lg)
 	sess := session.NewService(wallets, lg, reg, cat, settle)
 	pay := payments.NewDemoProvider()
@@ -365,7 +394,55 @@ func (g *gateway) handleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set(headerSpent, fmt.Sprintf("%d", costPerCall))
-	mockprovider.Handler().ServeHTTP(w, r)
+
+	// Decode request to stream from real provider
+	var req struct {
+		Model     string             `json:"model"`
+		Messages  []provider.Message `json:"messages"`
+		MaxTokens int                `json:"max_tokens"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":{"message":"bad request"}}`, http.StatusBadRequest)
+		return
+	}
+
+	slug := catalog.NormalizeModelSlug(req.Model)
+	p, m, err := g.cat.ProviderForModel(slug)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusBadRequest)
+		return
+	}
+
+	ad, err := g.sess.ProviderRegistry().Select(p)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	if req.MaxTokens <= 0 {
+		req.MaxTokens = 512
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+
+	flusher, _ := w.(http.Flusher)
+	writeSSE := func(chunk string) error {
+		_, err := fmt.Fprint(w, chunk)
+		if flusher != nil {
+			flusher.Flush()
+		}
+		return err
+	}
+
+	_, _ = ad.Stream(r.Context(), provider.Request{
+		Model:     m.Slug,
+		Messages:  req.Messages,
+		MaxTokens: req.MaxTokens,
+	}, writeSSE)
+	_ = writeSSE("data: [DONE]\n\n")
 }
 
 // issueChallenge returns 402 with a fresh invoice.

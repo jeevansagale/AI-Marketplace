@@ -19,12 +19,9 @@ import { formatINR, estimateSessionCost, providerBadge } from "@/lib/format";
 import Link from "next/link";
 import { StaggeredItem } from "@/components/PageTransition";
 
-const CATEGORY_LABELS: Record<string, { label: string; tone: "blue" | "violet" | "green" | "amber" }> = {
+const CATEGORY_LABELS: Record<string, { label: string; tone: "blue" | "violet" }> = {
   chat: { label: "Chat", tone: "blue" },
   vision: { label: "Vision", tone: "violet" },
-  ocr: { label: "OCR", tone: "violet" },
-  embeddings: { label: "Embeddings", tone: "green" },
-  audio: { label: "Audio", tone: "amber" },
 };
 
 function useCatalog() {
@@ -57,7 +54,7 @@ export default function MarketplacePage() {
     return models.filter(
       (m) =>
         m.name.toLowerCase().includes(q) ||
-        m.provider_name.toLowerCase().includes(q) ||
+        (m.provider && m.provider.toLowerCase().includes(q)) ||
         m.category.toLowerCase().includes(q),
     );
   }, [models, query]);
@@ -151,11 +148,11 @@ export default function MarketplacePage() {
                           <Td>
                             <div className="flex items-center gap-2.5">
                               <div className="flex h-8 w-8 items-center justify-center rounded-md border border-base-700 bg-base-850 text-[11px] font-semibold text-base-300">
-                                {providerBadge(m.provider_name).slice(0, 2).toUpperCase()}
+                                {providerBadge(m.provider).slice(0, 2).toUpperCase()}
                               </div>
                               <div className="min-w-0">
                                 <div className="text-[13px] font-medium text-base-100">
-                                  {providerBadge(m.provider_name)}
+                                  {providerBadge(m.provider)}
                                 </div>
                                 <div className="text-[11px] text-base-400">{m.provider_id}</div>
                               </div>
@@ -173,7 +170,7 @@ export default function MarketplacePage() {
                             </Badge>
                           </Td>
                           <Td className="font-mono text-[13px] tabular-nums text-base-100">
-                            {formatINR(m.price_base)}/session
+                            {formatINR(m.price_base_paise)}/session
                           </Td>
                           <Td className="font-mono text-[13px] tabular-nums text-base-200">
                             {formatINR(est)}

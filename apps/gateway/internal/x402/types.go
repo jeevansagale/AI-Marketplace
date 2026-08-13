@@ -20,15 +20,15 @@ const (
 
 // Challenge is the server->client invoice returned with HTTP 402.
 type Challenge struct {
-	Schema    string   `json:"schema"`               // "x402.invoice/1.0"
-	Network   string   `json:"network"`              // "algorand-testnet"
-	Escrow    string   `json:"escrow"`               // escrow account address
-	AssetID   uint64   `json:"assetId"`              // USDC ASA id
-	Amount    uint64   `json:"amount"`               // micro-USDC C_max
-	Nonce     string   `json:"nonce"`                // replay protection id
-	ExpiresAt string   `json:"expiresAt"`            // RFC3339
-	Metadata  Metadata `json:"metadata,omitempty"`   // model/channel context
-	PaymentRecipient string `json:"paymentRecipient,omitempty"` // provider wallet
+	Schema           string   `json:"schema"`                     // "x402.invoice/1.0"
+	Network          string   `json:"network"`                    // "algorand-testnet"
+	Escrow           string   `json:"escrow"`                     // escrow account address
+	AssetID          uint64   `json:"assetId"`                    // USDC ASA id
+	Amount           uint64   `json:"amount"`                     // micro-USDC C_max
+	Nonce            string   `json:"nonce"`                      // replay protection id
+	ExpiresAt        string   `json:"expiresAt"`                  // RFC3339
+	Metadata         Metadata `json:"metadata,omitempty"`         // model/channel context
+	PaymentRecipient string   `json:"paymentRecipient,omitempty"` // provider wallet
 }
 
 type Metadata struct {
@@ -38,8 +38,8 @@ type Metadata struct {
 
 // Proof is the client->server payment proof returned in the retry.
 type Proof struct {
-	Schema    string `json:"schema"`    // "x402.proof/1.0"
-	Nonce     string `json:"nonce"`     // echoes challenge nonce
+	Schema    string `json:"schema"` // "x402.proof/1.0"
+	Nonce     string `json:"nonce"`  // echoes challenge nonce
 	ChannelID string `json:"channelId"`
 	Sender    string `json:"sender"`    // consumer Algorand address
 	Signature string `json:"signature"` // base64 Ed25519 sig over canonical bytes

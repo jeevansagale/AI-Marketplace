@@ -15,11 +15,14 @@ dist/
 # Env
 .env
 .env.local
+.env.production
+.env.development
 .env.*.local
 
 # OS
 .DS_Store
 Thumbs.db
+*.exe
 
 # Logs / runtime
 *.log

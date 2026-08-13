@@ -54,10 +54,10 @@ type reservation struct {
 }
 
 type account struct {
-	balance       int64 // total
-	reserved      int64
-	tx            []Transaction
-	reservations  map[string]*reservation
+	balance      int64 // total
+	reserved     int64
+	tx           []Transaction
+	reservations map[string]*reservation
 }
 
 // Service manages all INR wallets with session reservation support.

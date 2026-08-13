@@ -8,12 +8,12 @@ import (
 
 func TestChallengeRoundTrip(t *testing.T) {
 	c := Challenge{
-		Schema:  "x402.invoice/1.0",
-		Network: "algorand-testnet",
-		Escrow:  "ESCROWADDR",
-		AssetID: 31566704,
-		Amount:  2500,
-		Nonce:   "n-123",
+		Schema:    "x402.invoice/1.0",
+		Network:   "algorand-testnet",
+		Escrow:    "ESCROWADDR",
+		AssetID:   31566704,
+		Amount:    2500,
+		Nonce:     "n-123",
 		ExpiresAt: time.Now().Add(time.Minute).UTC().Format(time.RFC3339),
 	}
 	hdr, err := EncodeChallenge(c)

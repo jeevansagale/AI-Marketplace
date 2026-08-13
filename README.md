@@ -1,3 +1,4 @@
+
 # 🤖 AI Marketplace
 
 > **An AI-native marketplace where agents discover, pay for, and consume AI services on a pay-per-use basis.**
@@ -14,10 +15,10 @@
 ## 🌐 Live Demo
 
 🚀 **Try AI Marketplace:**
-https://ai-marketplace-primo21.vercel.app
+<https://ai-marketplace-primo21.vercel.app>
 
 📦 **GitHub Repository:**
-https://github.com/jeevansagale/AI-Marketplace
+<https://github.com/jeevansagale/AI-Marketplace>
 
 ---
 
@@ -998,3 +999,86 @@ If you find the project interesting:
 **Discover → Pay → Use → Settle**
 
 </p>
+=======
+# OmniRoute AI Marketplace (x402 + Algorand / INR Wallet)
+
+Production-ready, pay-per-session AI inference marketplace backed by real AI infrastructure (**Google Gemini** & **OpenAI**).
+
+---
+
+## 🚀 Supported Functional Providers & Models
+
+All models listed in the catalog are backed by real upstream API integrations with streaming SSE inference and per-session wallet metering.
+
+| Provider | Model | Model Slug | Context Window | Description |
+| --- | --- | --- | --- | --- |
+| **Gemini** | Gemini 2.0 Flash | `gemini-2.0-flash` | 1,048,576 | Low-latency multimodal generation |
+| **Gemini** | Gemini 1.5 Flash | `gemini-1.5-flash` | 1,048,576 | Fast and versatile performance |
+| **Gemini** | Gemini 1.5 Pro | `gemini-1.5-pro` | 2,097,152 | Mid-tier reasoning for complex tasks |
+| **OpenAI** | GPT-4o | `gpt-4o` | 128,000 | Flagship high-intelligence model |
+| **OpenAI** | GPT-4o Mini | `gpt-4o-mini` | 128,000 | Affordable small model for lightweight tasks |
+| **OpenAI** | GPT-3.5 Turbo | `gpt-3.5-turbo` | 16,385 | Legacy fast text model |
+
+---
+
+## 🔑 Environment Setup
+
+1. Copy the example environment file:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Open `.env` and paste your actual API keys:
+
+   ```env
+   OMNI_GEMINI_API_KEY=your-gemini-api-key
+   OMNI_OPENAI_API_KEY=your-openai-api-key
+   ```
+
+3. Run the gateway. It will automatically load the `.env` file on local startup:
+
+   ```bash
+   cd apps/gateway
+   go run ./cmd/gateway
+   ```
+
+---
+
+## 🛠 Running Locally
+
+### 1. Run Gateway (Go)
+
+```bash
+cd apps/gateway
+go run ./cmd/gateway
+```
+
+The gateway listens on `http://localhost:8080`.
+
+### 2. Run Web Frontend (Next.js 15)
+
+```bash
+cd apps/web
+npm run dev
+```
+
+Open `http://localhost:3000` to access the Marketplace & Playground.
+
+---
+
+## 🧪 Testing
+
+```bash
+# Test shared catalog package
+cd shared/catalog
+go test ./...
+
+# Test gateway package
+cd apps/gateway
+go test ./...
+
+# Typecheck web frontend
+cd apps/web
+npx tsc --noEmit
+```

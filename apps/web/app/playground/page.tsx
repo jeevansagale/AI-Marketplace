@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useRef, useState, useCallback } from "rea
 import { useSearchParams } from "next/navigation";
 import {
   Play, Square, Loader2, Wallet, Zap, Activity, CheckCircle2,
-  Clock, ShieldCheck,
+  Clock, ShieldCheck, RefreshCw,
 } from "lucide-react";
 import { Shell } from "@/components/Shell";
 import { Button, Card, Badge, Skeleton, EmptyState, Label, Field, Textarea, Select } from "@/components/ui";
@@ -89,28 +89,29 @@ function PlaygroundPage() {
     actual: number; refunded: number;
     prompt: number; completion: number; latency: number;
   } | null>(null);
+  // Increment to force RecentActivity to re-fetch immediately.
+  const [activityRefreshKey, setActivityRefreshKey] = useState(0);
   const outRef = useRef<HTMLDivElement>(null);
 
   // Hydrate model from query param (marketplace "Use" button).
   useEffect(() => {
     if (models && models.length > 0 && !model) {
       const q = searchParams.get("model");
-      if (q && models.some((m) => m.name === q)) setModel(q);
-      else setModel(models[0].name);
+      const matched = models.find((m) => m.slug === q || m.name === q);
+      if (matched) setModel(matched.slug);
+      else setModel(models[0].slug);
     }
   }, [models, model, searchParams]);
 
   const selectedModel = useMemo(
-    () => models?.find((m) => m.name === model) ?? null,
+    () => models?.find((m) => m.slug === model || m.name === model) ?? null,
     [models, model],
   );
 
-  // Live session refresh (poll) while running — timeline updates from stages.
+  // While streaming, refresh the wallet balance every 2 s.
   useEffect(() => {
     if (!running || !session) return;
     const t = setInterval(() => {
-      // The gateway updates stages during streaming; polls keep us in sync
-      // with settled/refund states after completion.
       void refresh();
     }, 2000);
     return () => clearInterval(t);
@@ -127,9 +128,11 @@ function PlaygroundPage() {
     setRunning(true);
 
     try {
-      // 1. Reserve estimated cost (402-inspired wallet authorization).
+      // 1. Reserve estimated cost.
       const sess = await api.createSession(model, maxTokens);
       setSession(sess);
+      // Trigger an immediate RecentActivity refresh so "reserved" appears.
+      setActivityRefreshKey((k) => k + 1);
       await refresh();
 
       // 2. Stream with metering/settlement/refund.
@@ -148,17 +151,22 @@ function PlaygroundPage() {
             latency: s.latency_ms,
           });
           setRunning(false);
+          // Force an immediate refresh of Recent Activity to show "settled".
+          setActivityRefreshKey((k) => k + 1);
           void refresh();
         },
         onError: (m) => {
           setError(m);
           setRunning(false);
+          // Refresh so "failed" stage is reflected immediately.
+          setActivityRefreshKey((k) => k + 1);
           void refresh();
         },
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Session failed");
       setRunning(false);
+      setActivityRefreshKey((k) => k + 1);
       void refresh();
     }
   }, [model, prompt, maxTokens, refresh]);
@@ -166,6 +174,7 @@ function PlaygroundPage() {
   const cancel = () => {
     setRunning(false);
     setError("Stream cancelled. The reservation is automatically released.");
+    setActivityRefreshKey((k) => k + 1);
     void refresh();
   };
 
@@ -182,7 +191,7 @@ function PlaygroundPage() {
             </p>
           </div>
           {selectedModel && (
-            <Badge tone="blue" dot>{providerBadge(selectedModel.provider_name)} · {selectedModel.name}</Badge>
+            <Badge tone="blue" dot>{providerBadge(selectedModel.provider)} · {selectedModel.name}</Badge>
           )}
         </div>
       </StaggeredItem>
@@ -205,7 +214,7 @@ function PlaygroundPage() {
                 >
                   {models === null && <option>Loading…</option>}
                   {models?.map((m) => (
-                    <option key={m.id} value={m.name}>{m.name}</option>
+                    <option key={m.id} value={m.slug}>{m.name}</option>
                   ))}
                 </Select>
               </Field>
@@ -363,7 +372,8 @@ function PlaygroundPage() {
               </div>
             </Card>
 
-            <RecentActivity />
+            {/* refreshKey causes RecentActivity to immediately re-fetch on change */}
+            <RecentActivity refreshKey={activityRefreshKey} streaming={running} />
           </div>
         </div>
       </StaggeredItem>
@@ -388,25 +398,50 @@ export default function Playground() {
   );
 }
 
-/* ---- Recent sessions (right sidebar bottom: transaction timeline) ---- */
-function RecentActivity() {
+/* ---- Recent sessions (right sidebar bottom) ---- */
+
+interface RecentActivityProps {
+  /** Increment this to trigger an immediate fetch (e.g. after session completes). */
+  refreshKey: number;
+  /** True while streaming — poll faster (2 s) to reflect live stage changes. */
+  streaming: boolean;
+}
+
+function RecentActivity({ refreshKey, streaming }: RecentActivityProps) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    let mounted = true;
-    const load = async () => {
-      try {
-        const [s, b] = await Promise.all([api.sessions(), api.wallet()]);
-        if (!mounted) return;
-        setSessions(s.sessions.slice(0, 5));
-        setBalance(b.available_paise);
-      } catch { /* ignore */ }
-    };
-    void load();
-    const t = setInterval(load, 5000);
-    return () => { mounted = false; clearInterval(t); };
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [s, b] = await Promise.all([api.sessions(), api.wallet()]);
+      setSessions(s.sessions.slice(0, 5));
+      setBalance(b.available_paise);
+    } catch { /* ignore */ } finally {
+      setLoading(false);
+    }
   }, []);
+
+  // Initial load + load whenever refreshKey changes (parent signals a refresh).
+  useEffect(() => {
+    void load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
+
+  // Background polling: 2 s while streaming for live stage updates, 5 s at idle.
+  useEffect(() => {
+    const interval = streaming ? 2000 : 5000;
+    const t = setInterval(() => void load(), interval);
+    return () => clearInterval(t);
+  }, [streaming, load]);
+
+  const stageTone = (stage: string) => {
+    if (stage === "settled" || stage === "completed") return "text-pos-400";
+    if (stage === "failed") return "text-neg-400";
+    if (stage === "streaming") return "text-warn-400";
+    return "text-base-400";
+  };
 
   return (
     <Card>
@@ -415,31 +450,42 @@ function RecentActivity() {
           <ShieldCheck className="h-4 w-4 text-base-400" />
           <h2 className="text-sm font-semibold text-base-100">Recent activity</h2>
         </div>
-        {balance !== null && (
-          <span className="font-mono text-xs text-base-400">{formatINR(balance)} available</span>
-        )}
+        <div className="flex items-center gap-3">
+          {balance !== null && (
+            <span className="font-mono text-xs text-base-400">{formatINR(balance)} avail.</span>
+          )}
+          <button
+            onClick={() => void load()}
+            className="rounded p-1 text-base-500 transition hover:text-base-200"
+            title="Refresh"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
       <div className="px-5 py-2">
         {sessions.length === 0 ? (
           <p className="py-4 text-xs text-base-400">No sessions yet.</p>
         ) : (
-          <ul className="divide-y divide-base-200">
+          <ul className="divide-y divide-base-800">
             {sessions.map((s) => (
               <li key={s.id} className="flex items-center justify-between py-2.5">
                 <div className="flex items-center gap-2.5">
                   <div className="flex h-7 w-7 items-center justify-center rounded-md bg-base-800 text-[10px] font-semibold text-base-300">
-                    {providerBadge(s.provider_name).slice(0, 2)}
+                    {providerBadge(s.provider_name).slice(0, 2).toUpperCase()}
                   </div>
                   <div>
                     <p className="text-[13px] font-medium text-base-100">{s.model_name}</p>
-                    <p className="text-[11px] text-base-500">{s.stage} · {new Date(s.created_at).toLocaleTimeString("en-IN", { hour12: false })}</p>
+                    <p className={`text-[11px] ${stageTone(s.stage)}`}>
+                      {s.stage} · {new Date(s.created_at).toLocaleTimeString("en-IN", { hour12: false })}
+                    </p>
                   </div>
                 </div>
                 <span className={`font-mono text-[13px] ${
                   s.stage === "failed" ? "text-neg-400" :
                   s.actual_cost_paise > 0 ? "text-base-200" : "text-base-400"
                 }`}>
-                  −{formatINR(s.actual_cost_paise || 0)}
+                  {s.actual_cost_paise > 0 ? `−${formatINR(s.actual_cost_paise)}` : formatINR(s.estimated_paise)}
                 </span>
               </li>
             ))}

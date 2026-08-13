@@ -12,20 +12,26 @@ export interface Provider {
 
 export interface MarketModel {
   id: string;
+  provider_id: string;
+
   name: string;
   slug: string;
   category: string;
   description: string;
+
   context_window: number;
-  price_base: number; // paise
-  price_prompt: number; // paise per 1K prompt tokens
-  price_completion: number; // paise per 1K completion tokens
+
+  // THESE MATCH THE BACKEND
+  price_base_paise: number;
+  price_prompt_paise: number;
+  price_completion_paise: number;
+
+  provider: string;
+
   p90_latency_ms: number;
   throughput_tps: number;
-  provider_name: string;
-  provider_id: string;
+
   is_active: boolean;
-  session_reserve: number; // paise
 }
 
 export interface Catalog {
@@ -58,6 +64,7 @@ export interface Session {
   id: string;
   wallet_id: string;
   model_id: string;
+  model_slug: string;
   model_name: string;
   provider_id: string;
   provider_name: string;
@@ -236,7 +243,7 @@ export async function streamSession(
   };
 
   try {
-    for (;;) {
+    for (; ;) {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
