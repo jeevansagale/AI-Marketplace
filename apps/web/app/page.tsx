@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Wallet, Boxes, Play, ShieldCheck, Radio } from "lucide-react";
+import { ArrowRight, Wallet, Boxes, Play, ShieldCheck, Radio, Zap, ArrowRightLeft, RefreshCw, CheckCircle2 } from "lucide-react";
+import { motion } from "framer-motion";
 import { Shell } from "@/components/Shell";
 import { Card, Badge, Button, Skeleton } from "@/components/ui";
 import { useWalletClient } from "@/lib/stores/useWallet";
@@ -9,10 +10,15 @@ import { formatINR } from "@/lib/format";
 import { useEffect } from "react";
 import { StaggeredItem } from "@/components/PageTransition";
 
-const STEPS = [
-  { n: "01", title: "Pick a model", body: "Browse providers by price, latency, and context window." },
-  { n: "02", title: "Fund your wallet", body: "Top up in INR via a verified payment provider." },
-  { n: "03", title: "Run a session", body: "Estimated cost reserved, metered while streaming, remainder refunded." },
+const EASE = [0.16, 1, 0.3, 1] as const;
+
+const PROTOCOL_NODES = [
+  { id: "01", title: "INR Wallet", desc: "Prepaid balance" },
+  { id: "02", title: "Cost Reserve", desc: "Estimated hold" },
+  { id: "03", title: "AI Router", desc: "Catalog dispatch" },
+  { id: "04", title: "SSE Stream", desc: "Metered tokens" },
+  { id: "05", title: "Settlement", desc: "Provider payout" },
+  { id: "06", title: "Auto Refund", desc: "Unused balance" },
 ];
 
 export default function Home() {
@@ -30,7 +36,7 @@ export default function Home() {
           <StaggeredItem index={0}>
             <Badge tone="blue" className="mb-4 inline-flex">
               <span className="flex items-center gap-1.5">
-                <Radio className="h-3 w-3" />
+                <Radio className="h-3 w-3 text-accent-500 animate-pulse" />
                 HTTP 402 · Wallet payments · Settlement-ready
               </span>
             </Badge>
@@ -116,23 +122,32 @@ export default function Home() {
           </StaggeredItem>
         </div>
 
-        {/* How it works */}
+        {/* Animated x402 Protocol Flow */}
         <StaggeredItem index={0}>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-base-400">
-            How it works
-          </h2>
-        </StaggeredItem>
-        <StaggeredItem index={1}>
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {STEPS.map((s, idx) => (
-              <StaggeredItem key={s.n} index={idx}>
-                <Card className="p-5">
-                  <div className="font-mono text-xs text-accent-400">{s.n}</div>
-                  <h3 className="mt-2 text-sm font-semibold text-base-100">{s.title}</h3>
-                  <p className="mt-1 text-[13px] leading-relaxed text-base-400">{s.body}</p>
-                </Card>
-              </StaggeredItem>
-            ))}
+          <div className="space-y-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-base-400">
+              x402 Protocol Lifecycle
+            </h2>
+            <Card className="p-6 overflow-hidden">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-6">
+                {PROTOCOL_NODES.map((node, i) => (
+                  <motion.div
+                    key={node.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.4, delay: i * 0.08, ease: EASE }}
+                    className="relative flex flex-col justify-between rounded-lg border border-base-700/60 bg-base-850 p-4"
+                  >
+                    <div>
+                      <span className="font-mono text-[10px] text-accent-500 font-semibold">{node.id}</span>
+                      <h3 className="mt-1 text-xs font-semibold text-base-100">{node.title}</h3>
+                    </div>
+                    <p className="mt-2 text-[11px] text-base-400">{node.desc}</p>
+                  </motion.div>
+                ))}
+              </div>
+            </Card>
           </div>
         </StaggeredItem>
       </div>

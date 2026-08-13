@@ -185,6 +185,52 @@
     transition-timing-function: var(--ease-in-out);
   }
 
+  /* Cinematic motion — used by ProviderRoutingAnimation, X402Visualizer */
+  .transition-cinematic {
+    transition-duration: 550ms;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Animated gradient border for selected provider card */
+  .gradient-border {
+    background: linear-gradient(var(--color-base-850), var(--color-base-850)) padding-box,
+                linear-gradient(135deg, var(--color-accent-400), var(--color-accent-600)) border-box;
+    border: 1.5px solid transparent;
+  }
+
+  /* Pulse-glow for active session indicator */
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgb(79 110 247 / 0.3); }
+    50%       { box-shadow: 0 0 0 6px rgb(79 110 247 / 0); }
+  }
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  /* Slide-in-up for panel entrances */
+  @keyframes slide-in-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .animate-slide-in-up {
+    animation: slide-in-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  /* Number ticker animation — for live cost/token counters */
+  @keyframes count-up {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .animate-count {
+    animation: count-up 0.15s ease-out;
+  }
+
+  /* Flow-line draw — for X402 visualizer connecting lines */
+  @keyframes draw-line {
+    from { stroke-dashoffset: 100; }
+    to   { stroke-dashoffset: 0; }
+  }
+
   /* Focus ring utility */
   .focus-ring {
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-base-900;
@@ -197,7 +243,18 @@
     background-clip: text;
     -webkit-text-fill-color: transparent;
   }
+
+  /* Provider card highlight state */
+  .provider-selected {
+    background: rgb(79 110 247 / 0.04);
+    border-color: rgb(79 110 247 / 0.3);
+  }
+  .provider-dimmed {
+    opacity: 0.4;
+    filter: grayscale(0.3);
+  }
 }
+
 
 /* Respect users who prefer reduced motion */
 @media (prefers-reduced-motion: reduce) {

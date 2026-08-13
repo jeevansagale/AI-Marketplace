@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   Plus,
   Wallet,
@@ -19,129 +19,134 @@ import { useWalletClient } from "@/lib/stores/useWallet";
 import { api } from "@/lib/api";
 import { formatINR } from "@/lib/format";
 import { PageTransition } from "./PageTransition";
+import { TopUpPaymentAnimation, type TopUpPhase } from "./TopUpPaymentAnimation";
 
 const nav = [
   { href: "/", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/marketplace", label: "Marketplace", icon: Boxes },
   { href: "/playground", label: "Playground", icon: Play },
+  { href: "/wallet", label: "Wallet", icon: Wallet },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const { balance, loading, error, refresh } = useWalletClient();
-  const [topupOpen, setTopupOpen] = useState(false);
+  const [openTopUp, setOpenTopUp] = useState(false);
   const pathname = usePathname();
   const reduceMotion = useReducedMotion();
 
-  // Live balance refresh every 5s (reservations + refunds land back).
+  // Initial fetch on mount.
   useEffect(() => {
     void refresh();
-    const t = setInterval(() => void refresh(), 5000);
-    return () => clearInterval(t);
   }, [refresh]);
 
   return (
-    <div className="min-h-screen bg-base-950">
-      <header className="sticky top-0 z-30 border-b border-base-700 bg-base-950/90 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4 sm:gap-6 sm:px-6">
-          {/* Brand */}
-          <Link href="/" className="flex min-w-0 items-center gap-2.5 rounded-md focus-ring">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent-500 text-white shadow-[0_1px_1px_rgb(15_23_42_/_0.12)]">
-              <Radio className="h-4 w-4" />
-            </div>
-            <span className="truncate text-sm font-semibold text-base-100">
-              x402 Marketplace
-            </span>
-          </Link>
+    <div className="min-h-screen bg-base-950 text-base-100 font-sans antialiased selection:bg-accent-500/20 selection:text-accent-400">
+      {/* Network banner */}
+      <div className="border-b border-base-800/80 bg-base-900/60 backdrop-blur-md px-4 py-1.5 text-xs text-base-400">
+        <div className="mx-auto flex max-w-7xl items-center justify-between">
+          <span className="flex items-center gap-2 font-mono text-[11px] text-base-300">
+            <Radio className="h-3 w-3 text-pos-400 animate-pulse" />
+            <span className="text-base-400">OMNI-ROUTE</span>
+            <span className="text-base-600">/</span>
+            <span>SETTLEMENT CHANNEL OPEN</span>
+          </span>
+          <span className="hidden font-mono text-[11px] text-base-400 sm:inline">
+            x402 Pay-per-session · INR Prepaid
+          </span>
+        </div>
+      </div>
 
-          {/* Nav */}
-          <nav className="hidden items-center gap-1 md:flex">
-            {nav.map(({ href, label, icon: Icon, exact }) => (
-              <Link
-                key={href}
-                href={href}
-                aria-current={(exact ? pathname === href : pathname.startsWith(href)) ? "page" : undefined}
-                className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors duration-150 ease-out focus-ring ${
-                  (exact ? pathname === href : pathname.startsWith(href))
-                    ? "bg-base-900 text-base-100 shadow-[inset_0_0_0_1px_var(--border-subtle)]"
-                    : "text-base-300 hover:bg-base-800 hover:text-base-100"
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {label}
-              </Link>
-            ))}
-          </nav>
-
-          <div className="ml-auto flex items-center gap-3">
-            {/* Live wallet pill */}
+      {/* Main navigation */}
+      <header className="sticky top-0 z-40 border-b border-base-800/80 bg-base-950/80 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 h-14">
+          <div className="flex items-center gap-8">
             <Link
-              href="/wallet"
-              className="group flex min-w-0 items-center gap-2.5 rounded-md border border-base-700 bg-base-900 px-3 py-1.5 transition-[border-color,box-shadow,background-color] duration-150 ease-out hover:border-base-600 hover:bg-base-850 focus-ring"
+              href="/"
+              className="flex items-center gap-2 font-mono text-sm font-semibold tracking-tight text-base-100 transition-opacity hover:opacity-90 focus-ring rounded-md"
             >
-              <Wallet className="h-3.5 w-3.5 shrink-0 text-base-400" />
-              {loading && !balance ? (
-                <Skeleton className="h-4 w-20" />
-              ) : balance ? (
-                <span className="truncate font-mono text-[13px] font-medium tabular-nums text-base-100">
-                  {formatINR(balance.available_paise ?? 0)}
-                </span>
-              ) : (
-                <span className="text-[13px] text-base-400">{error ?? "—"}</span>
-              )}
-              {balance && balance.reserved_paise > 0 && (
-                <span className="font-mono text-[11px] text-warn-400">
-                  ({formatINR(balance.reserved_paise)} held)
-                </span>
-              )}
+              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-accent-500/10 text-accent-400 border border-accent-500/20 font-bold">
+                X
+              </span>
+              <span>AI Marketplace</span>
             </Link>
 
-            <Button size="sm" onClick={() => setTopupOpen(true)}>
+            <nav className="flex items-center gap-1" aria-label="Main navigation">
+              {nav.map((item) => {
+                const active = item.exact
+                  ? pathname === item.href
+                  : pathname === item.href || pathname.startsWith(item.href + "/");
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`relative flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-[color,background-color] duration-150 ease-out focus-ring ${
+                      active
+                        ? "text-base-100"
+                        : "text-base-400 hover:bg-base-900/60 hover:text-base-200"
+                    }`}
+                  >
+                    {active && (
+                      <motion.div
+                        layoutId={reduceMotion ? undefined : "nav-active"}
+                        className="absolute inset-0 rounded-md bg-base-800/80 border border-base-700/50"
+                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                      />
+                    )}
+                    <span className="relative z-10 flex items-center gap-2">
+                      <Icon className={`h-3.5 w-3.5 ${active ? "text-accent-400" : "text-base-400"}`} />
+                      {item.label}
+                    </span>
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+
+          {/* Right side: Wallet balance & Top Up button */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 rounded-lg border border-base-800 bg-base-900/60 px-3 py-1.5 text-xs">
+              <Wallet className="h-3.5 w-3.5 text-base-400" />
+              {loading && !balance ? (
+                <Skeleton className="h-3.5 w-16" />
+              ) : error ? (
+                <span className="text-neg-400 text-[11px]">Offline</span>
+              ) : (
+                <span className="font-mono font-medium text-base-100">
+                  {balance ? formatINR(balance.available_paise) : "₹0.00"}
+                </span>
+              )}
+            </div>
+
+            <Button
+              size="sm"
+              onClick={() => setOpenTopUp(true)}
+              className="gap-1.5 font-medium shadow-sm"
+            >
               <Plus className="h-3.5 w-3.5" />
               Top up
             </Button>
           </div>
         </div>
-        <nav className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 pb-2 md:hidden">
-          {nav.map(({ href, label, icon: Icon, exact }) => {
-            const active = exact ? pathname === href : pathname.startsWith(href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                aria-current={active ? "page" : undefined}
-                className={`inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-[13px] font-medium transition-colors duration-150 ease-out focus-ring ${
-                  active
-                    ? "bg-base-900 text-base-100 shadow-[inset_0_0_0_1px_var(--border-subtle)]"
-                    : "text-base-300 hover:bg-base-800 hover:text-base-100"
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {label}
-              </Link>
-            );
-          })}
-        </nav>
       </header>
 
-      <PageTransition>
-        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-          {children}
-        </main>
-      </PageTransition>
+      {/* Main page content container with smooth transition */}
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+        <PageTransition>{children}</PageTransition>
+      </main>
 
-      {topupOpen && (
+      {/* Top up modal */}
+      {openTopUp && (
         <TopUpModal
-          onClose={() => setTopupOpen(false)}
-          onDone={() => {
-            void refresh();
-          }}
+          onClose={() => setOpenTopUp(false)}
+          onDone={() => void refresh()}
         />
       )}
     </div>
   );
 }
 
-/* ---------- Top-up modal (v2 payment abstraction) ---------- */
+/* ---------- Top-up modal (v2 payment abstraction with animation) ---------- */
 export function TopUpModal({
   onClose,
   onDone,
@@ -151,21 +156,35 @@ export function TopUpModal({
 }) {
   const [amount, setAmount] = useState(100);
   const [step, setStep] = useState<"amount" | "paying" | "done" | "error">("amount");
+  const [payPhase, setPayPhase] = useState<TopUpPhase>("processing");
   const [message, setMessage] = useState("");
   const [orderId, setOrderId] = useState("");
 
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
   const start = async () => {
     setStep("paying");
+    setPayPhase("processing");
     setMessage("");
-    try {
+
+    const verified = (async () => {
       const order = await api.topup(amount);
       setOrderId(order.order_id);
-      // Simulate the client payment sheet completing (UPI/Razorpay).
-      setStep("paying");
-      await new Promise((r) => setTimeout(r, 800));
       await api.topupVerify(order.order_id);
-      setStep("done");
+    })();
+
+    try {
+      await sleep(200);
+      setPayPhase("routing");
+      await sleep(350);
+      setPayPhase("verifying");
+
+      await verified;
+
+      setPayPhase("success");
       onDone();
+      await sleep(650);
+      setStep("done");
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "top-up failed");
       setStep("error");
@@ -204,79 +223,84 @@ export function TopUpModal({
         </div>
 
         <div className="space-y-4 px-5 pb-5">
-          {step === "amount" && (
-            <>
-              <div className="grid grid-cols-4 gap-2">
-                {preset.map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setAmount(p)}
-                    className={`rounded-md border px-2 py-2 font-mono text-[13px] font-medium transition-[border-color,background-color,color,transform] duration-150 ease-out active:scale-[0.98] focus-ring ${
-                      amount === p
-                        ? "border-accent-500/50 bg-accent-500/10 text-accent-400"
-                        : "border-base-700 bg-base-900 text-base-200 hover:border-base-600 hover:bg-base-850"
-                    }`}
-                  >
-                    ₹{p}
-                  </button>
-                ))}
-              </div>
-              <label className="block">
-                <span className="text-xs text-base-400">Amount</span>
-                <div className="field mt-1 flex items-center gap-2 rounded-md px-3">
-                  <span className="text-sm text-base-400">₹</span>
-                  <input
-                    type="number"
-                    min={10}
-                    value={amount}
-                    onChange={(e) => setAmount(Number(e.target.value))}
-                    className="h-9 w-full bg-transparent font-mono text-sm outline-none"
-                  />
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={step}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              className="space-y-4"
+            >
+              {step === "amount" && (
+                <>
+                  <div className="grid grid-cols-4 gap-2">
+                    {preset.map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => setAmount(p)}
+                        className={`rounded-md border px-2 py-2 font-mono text-[13px] font-medium transition-[border-color,background-color,color,transform] duration-150 ease-out active:scale-[0.98] focus-ring ${
+                          amount === p
+                            ? "border-accent-500/50 bg-accent-500/10 text-accent-400"
+                            : "border-base-700 bg-base-900 text-base-200 hover:border-base-600 hover:bg-base-850"
+                        }`}
+                      >
+                        ₹{p}
+                      </button>
+                    ))}
+                  </div>
+                  <label className="block">
+                    <span className="text-xs text-base-400">Amount</span>
+                    <div className="field mt-1 flex items-center gap-2 rounded-md px-3">
+                      <span className="text-sm text-base-400">₹</span>
+                      <input
+                        type="number"
+                        min={10}
+                        value={amount}
+                        onChange={(e) => setAmount(Number(e.target.value))}
+                        className="h-9 w-full bg-transparent font-mono text-sm outline-none"
+                      />
+                    </div>
+                  </label>
+                  <Button className="w-full" onClick={start} loading={false}>
+                    Continue to payment
+                  </Button>
+                </>
+              )}
+
+              {step === "paying" && (
+                <TopUpPaymentAnimation
+                  amountPaise={amount * 100}
+                  phase={payPhase}
+                  orderId={orderId}
+                />
+              )}
+
+              {step === "done" && (
+                <div className="flex flex-col items-center py-4">
+                  <Badge tone="green" dot>
+                    Wallet credited
+                  </Badge>
+                  <p className="mt-3 text-sm text-base-200">
+                    {formatINR(amount * 100)} added to balance
+                  </p>
+                  <Button className="mt-4 w-full" onClick={onClose}>
+                    Done
+                  </Button>
                 </div>
-              </label>
-              <Button className="w-full" onClick={start} loading={false}>
-                Continue to payment
-              </Button>
-            </>
-          )}
+              )}
 
-          {step === "paying" && (
-            <div className="flex flex-col items-center py-6">
-              <Badge tone="blue" dot>
-                Payment in progress
-              </Badge>
-              <p className="mt-3 font-mono text-sm text-base-200">
-                {formatINR(amount * 100)}
-              </p>
-              <p className="mt-1 text-xs text-base-400">
-                Order {orderId || "…"} — waiting for provider verification
-              </p>
-            </div>
-          )}
-
-          {step === "done" && (
-            <div className="flex flex-col items-center py-4">
-              <Badge tone="green" dot>
-                Wallet credited
-              </Badge>
-              <p className="mt-3 text-sm text-base-200">
-                {formatINR(amount * 100)} added to balance
-              </p>
-              <Button className="mt-4 w-full" onClick={onClose}>
-                Done
-              </Button>
-            </div>
-          )}
-
-          {step === "error" && (
-            <div className="flex flex-col items-center py-4">
-              <Badge tone="red">Top-up failed</Badge>
-              <p className="mt-3 text-sm text-base-200">{message}</p>
-              <Button variant="secondary" className="mt-4 w-full" onClick={() => setStep("amount")}>
-                Try again
-              </Button>
-            </div>
-          )}
+              {step === "error" && (
+                <div className="flex flex-col items-center py-4">
+                  <Badge tone="red">Top-up failed</Badge>
+                  <p className="mt-3 text-sm text-base-200">{message}</p>
+                  <Button variant="secondary" className="mt-4 w-full" onClick={() => setStep("amount")}>
+                    Try again
+                  </Button>
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </Card>
     </div>

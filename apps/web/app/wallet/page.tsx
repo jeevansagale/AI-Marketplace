@@ -8,6 +8,7 @@ import { api, type LedgerEntry, type WalletTx } from "@/lib/api";
 import { formatINR, formatSigned, providerBadge } from "@/lib/format";
 import { useWalletClient } from "@/lib/stores/useWallet";
 import { StaggeredItem } from "@/components/PageTransition";
+import { QuantumTokenLedger } from "@/components/QuantumTokenLedger";
 
 export default function WalletPage() {
   const { balance, transactions, loading, refresh } = useWalletClient();
@@ -127,6 +128,10 @@ export default function WalletPage() {
         </StaggeredItem>
 
         <StaggeredItem index={2}>
+          <QuantumTokenLedger />
+        </StaggeredItem>
+
+        <StaggeredItem index={3}>
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
             {/* Recent transactions */}
             <Card className="lg:col-span-2">
@@ -197,7 +202,7 @@ export default function WalletPage() {
         </StaggeredItem>
 
         {/* Immutable ledger */}
-        <StaggeredItem index={3}>
+        <StaggeredItem index={4}>
           <Card>
             <CardHeader
               title="Ledger"

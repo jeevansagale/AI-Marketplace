@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -114,6 +115,25 @@ func main() {
 	sess := session.NewService(wallets, lg, reg, cat, settle)
 	pay := payments.NewDemoProvider()
 
+	// ── Startup Gemini model validation ───────────────────────────────────────
+	// Non-fatal: a proxy key or offline environment must not block startup.
+	// Warnings are logged so operators can diagnose misconfiguration early.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		defer cancel()
+		const geminiBase = "https://generativelanguage.googleapis.com/v1beta"
+		for _, m := range cat.ActiveModels() {
+			if m.ProviderName != "Gemini" {
+				continue
+			}
+			if err := provider.ValidateGeminiModel(ctx, geminiBase, geminiKey, m.Slug); err != nil {
+				logger.Printf("⚠ WARN: Gemini model validation failed for %q: %v", m.Slug, err)
+			} else {
+				logger.Printf("✓ Gemini model %q validated", m.Slug)
+			}
+		}
+	}()
+
 	g := &gateway{st: st, logger: logger, cat: cat, wallets: wallets, ledger: lg, sess: sess, pay: pay}
 
 	mux := http.NewServeMux()
@@ -138,12 +158,14 @@ func main() {
 
 	// v2 API surface.
 	mux.HandleFunc("GET /api/catalog", g.handleCatalog)
+	mux.HandleFunc("GET /api/provider/gemini/models", g.handleGeminiModels)
 	mux.HandleFunc("GET /api/wallet", g.handleWallet)
 	mux.HandleFunc("GET /api/wallet/transactions", g.handleWalletTransactions)
 	mux.HandleFunc("POST /api/topup", g.handleTopUp)
 	mux.HandleFunc("POST /api/topup/verify", g.handleTopUpVerify)
 	mux.HandleFunc("POST /api/sessions", g.handleSessionCreate)
 	mux.HandleFunc("POST /api/sessions/{id}/stream", g.handleSessionStream)
+	mux.HandleFunc("POST /api/sessions/{id}/image", g.handleSessionImage)
 	mux.HandleFunc("GET /api/sessions", g.handleSessionList)
 	mux.HandleFunc("GET /api/ledger", g.handleLedger)
 
@@ -171,6 +193,44 @@ func (g *gateway) handleCatalog(w http.ResponseWriter, r *http.Request) {
 		"providers": g.cat.Providers,
 		"models":    models,
 	})
+}
+
+// handleGeminiModels queries the live Gemini API and returns all models that
+// support generateContent. Used by operators for diagnostics and by the
+// frontend provider-health panel.
+func (g *gateway) handleGeminiModels(w http.ResponseWriter, r *http.Request) {
+	geminiKey := os.Getenv("OMNI_GEMINI_API_KEY")
+	if geminiKey == "" {
+		geminiKey = os.Getenv("GEMINI_API_KEY")
+	}
+	if geminiKey == "" {
+		writeErr(w, http.StatusServiceUnavailable, errors.New("OMNI_GEMINI_API_KEY not configured"))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	models, err := provider.ListGeminiModels(ctx, "https://generativelanguage.googleapis.com/v1beta", geminiKey)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, fmt.Errorf("gemini model list failed: %w", err))
+		return
+	}
+
+	type modelOut struct {
+		Slug        string   `json:"slug"`
+		DisplayName string   `json:"display_name"`
+		Methods     []string `json:"supported_methods"`
+	}
+	out := make([]modelOut, 0, len(models))
+	for _, m := range models {
+		out = append(out, modelOut{
+			Slug:        m.Slug(),
+			DisplayName: m.DisplayName,
+			Methods:     m.SupportedGenerationMethods,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"models": out, "count": len(out)})
 }
 
 func (g *gateway) handleWallet(w http.ResponseWriter, r *http.Request) {
@@ -267,8 +327,9 @@ func (g *gateway) orderAmount(orderID string) int64 {
 // handleSessionCreate reserves wallet funds for an estimated session cost.
 func (g *gateway) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Model     string `json:"model"`
-		MaxTokens int    `json:"max_tokens"`
+		Model                 string `json:"model"`
+		MaxTokens             int    `json:"max_tokens"`
+		EstimatedPromptTokens int    `json:"estimated_prompt_tokens,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
@@ -279,7 +340,7 @@ func (g *gateway) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slug := catalog.NormalizeModelSlug(req.Model)
-	sess, err := g.sess.Create(wallet.DemoWalletID, slug, req.MaxTokens)
+	sess, err := g.sess.Create(wallet.DemoWalletID, slug, req.MaxTokens, req.EstimatedPromptTokens)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -318,7 +379,12 @@ func (g *gateway) handleSessionStream(w http.ResponseWriter, r *http.Request) {
 		return writeSSE(strings.TrimSuffix(strings.TrimSuffix(chunk, "\n"), "\n"))
 	})
 	if err != nil {
-		_ = writeSSE(`data: {"error":"` + strings.ReplaceAll(err.Error(), `"`, `\"`) + `"}`)
+		if pe, ok := err.(*provider.ProviderError); ok {
+			b, _ := json.Marshal(map[string]any{"error": pe})
+			_ = writeSSE("data: " + string(b))
+		} else {
+			_ = writeSSE(`data: {"error":"` + strings.ReplaceAll(err.Error(), `"`, `\"`) + `"}`)
+		}
 		return
 	}
 	b, _ := json.Marshal(map[string]any{
@@ -327,6 +393,28 @@ func (g *gateway) handleSessionStream(w http.ResponseWriter, r *http.Request) {
 	})
 	_ = writeSSE("data: " + string(b))
 	_ = writeSSE("data: [DONE]")
+}
+
+// handleSessionImage generates an image for a session.
+func (g *gateway) handleSessionImage(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		Prompt string `json:"prompt"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if req.Prompt == "" {
+		writeErr(w, http.StatusBadRequest, errors.New("prompt is required"))
+		return
+	}
+	sum, err := g.sess.GenerateImage(r.Context(), id, req.Prompt)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, sum)
 }
 
 func (g *gateway) handleSessionList(w http.ResponseWriter, r *http.Request) {
@@ -537,6 +625,10 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func writeErr(w http.ResponseWriter, status int, err error) {
+	if pe, ok := err.(*provider.ProviderError); ok {
+		writeJSON(w, pe.StatusCode, map[string]any{"error": pe})
+		return
+	}
 	writeJSON(w, status, map[string]any{
 		"error": map[string]any{
 			"message": err.Error(),

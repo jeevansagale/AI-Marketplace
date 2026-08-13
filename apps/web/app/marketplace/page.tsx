@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { ArrowUpRight, Boxes, Search } from "lucide-react";
+import { ArrowUpRight, Boxes, Search, Activity, Zap } from "lucide-react";
 import { Shell } from "@/components/Shell";
 import {
   Card,
@@ -147,8 +147,9 @@ export default function MarketplacePage() {
                         <tr className="border-b border-base-200 transition-colors duration-150 last:border-0 hover:bg-base-800/60">
                           <Td>
                             <div className="flex items-center gap-2.5">
-                              <div className="flex h-8 w-8 items-center justify-center rounded-md border border-base-700 bg-base-850 text-[11px] font-semibold text-base-300">
+                              <div className="relative flex h-8 w-8 items-center justify-center rounded-md border border-base-700 bg-base-850 text-[11px] font-semibold text-base-300">
                                 {providerBadge(m.provider).slice(0, 2).toUpperCase()}
+                                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-pos-400 animate-pulse" />
                               </div>
                               <div className="min-w-0">
                                 <div className="text-[13px] font-medium text-base-100">
@@ -176,7 +177,10 @@ export default function MarketplacePage() {
                             {formatINR(est)}
                           </Td>
                           <Td className="font-mono text-[13px] tabular-nums text-base-200">
-                            {m.p90_latency_ms} ms
+                            <span className="flex items-center gap-1">
+                              <Zap className="h-3 w-3 text-accent-500" />
+                              {m.p90_latency_ms} ms
+                            </span>
                           </Td>
                           <Td className="font-mono text-[13px] tabular-nums text-base-200">
                             {(m.context_window / 1024).toFixed(0)}K

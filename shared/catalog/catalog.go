@@ -49,6 +49,9 @@ type Model struct {
 	LatencyMs       int     `json:"p90_latency_ms"`
 	Throughput      float64 `json:"throughput_tps"`
 	IsActive        bool    `json:"is_active"`
+	SupportsChat    bool    `json:"supports_chat"`
+	SupportsImages  bool    `json:"supports_images"`
+	SupportsStreaming bool  `json:"supports_streaming"`
 }
 
 // Catalog bundles providers and models for a single fetch.
@@ -87,16 +90,14 @@ func defaultProviders() []Provider {
 func defaultModels() []Model {
 	return []Model{
 		// ── Gemini (verified live against GET /v1beta/models 2026-08-13) ──────
-		// gemini-2.5-flash: fast, low-cost, 1M context.
-		{"20000000-0000-0000-0000-000000000001", "10000000-0000-0000-0000-000000000001", "Gemini 2.5 Flash", "gemini-2.5-flash", "chat", "Fast and affordable multimodal model with 1M token context.", 1048576, 10, 2, 3, "Gemini", 380, 96.0, true},
-		// gemini-2.5-flash-lite: cheapest option for lightweight tasks.
-		{"20000000-0000-0000-0000-000000000002", "10000000-0000-0000-0000-000000000001", "Gemini 2.5 Flash Lite", "gemini-2.5-flash-lite", "chat", "Fastest and most affordable Gemini model for high-frequency workloads.", 1048576, 5, 1, 2, "Gemini", 220, 140.0, true},
-		// gemini-2.5-pro: highest-intelligence Gemini model.
-		{"20000000-0000-0000-0000-000000000003", "10000000-0000-0000-0000-000000000001", "Gemini 2.5 Pro", "gemini-2.5-pro", "chat", "Most intelligent Gemini model for complex reasoning tasks.", 2097152, 30, 7, 20, "Gemini", 800, 40.0, true},
+		{"20000000-0000-0000-0000-000000000001", "10000000-0000-0000-0000-000000000001", "Gemini 2.5 Flash", "gemini-2.5-flash", "chat", "Fast and affordable multimodal model with 1M token context.", 1048576, 10, 2, 3, "Gemini", 380, 96.0, true, true, false, true},
+		{"20000000-0000-0000-0000-000000000002", "10000000-0000-0000-0000-000000000001", "Gemini 2.5 Flash Lite", "gemini-2.5-flash-lite", "chat", "Fastest and most affordable Gemini model for high-frequency workloads.", 1048576, 5, 1, 2, "Gemini", 220, 140.0, true, true, false, true},
+		{"20000000-0000-0000-0000-000000000003", "10000000-0000-0000-0000-000000000001", "Gemini 2.5 Pro", "gemini-2.5-pro", "chat", "Most intelligent Gemini model for complex reasoning tasks.", 2097152, 30, 7, 20, "Gemini", 800, 40.0, true, true, false, true},
+		{"20000000-0000-0000-0000-000000000007", "10000000-0000-0000-0000-000000000001", "Gemini 2.5 Flash Image", "gemini-2.5-flash-image", "vision", "High-speed image generation model.", 32768, 50, 0, 0, "Gemini", 1200, 1.0, true, false, true, false},
 		// ── OpenAI ───────────────────────────────────────────────────────────
-		{"20000000-0000-0000-0000-000000000004", "10000000-0000-0000-0000-000000000002", "GPT-4o", "gpt-4o", "chat", "Flagship high-intelligence multimodal flagship model.", 128000, 20, 4, 12, "OpenAI", 400, 80.0, true},
-		{"20000000-0000-0000-0000-000000000005", "10000000-0000-0000-0000-000000000002", "GPT-4o Mini", "gpt-4o-mini", "chat", "Affordable, fast small model for lightweight tasks.", 128000, 5, 1, 2, "OpenAI", 180, 160.0, true},
-		{"20000000-0000-0000-0000-000000000006", "10000000-0000-0000-0000-000000000002", "GPT-3.5 Turbo", "gpt-3.5-turbo", "chat", "Legacy fast text model.", 16385, 5, 1, 2, "OpenAI", 200, 140.0, true},
+		{"20000000-0000-0000-0000-000000000004", "10000000-0000-0000-0000-000000000002", "GPT-4o", "gpt-4o", "chat", "Flagship high-intelligence multimodal flagship model.", 128000, 20, 4, 12, "OpenAI", 400, 80.0, true, true, false, true},
+		{"20000000-0000-0000-0000-000000000005", "10000000-0000-0000-0000-000000000002", "GPT-4o Mini", "gpt-4o-mini", "chat", "Affordable, fast small model for lightweight tasks.", 128000, 5, 1, 2, "OpenAI", 180, 160.0, true, true, false, true},
+		{"20000000-0000-0000-0000-000000000006", "10000000-0000-0000-0000-000000000002", "GPT-3.5 Turbo", "gpt-3.5-turbo", "chat", "Legacy fast text model.", 16385, 5, 1, 2, "OpenAI", 200, 140.0, true, true, false, true},
 	}
 }
 
@@ -162,6 +163,26 @@ func (c Catalog) ProviderForModel(modelSlug string) (Provider, Model, error) {
 	return p, m, nil
 }
 
+// FallbackProvider locates an active alternative provider and model when a
+// primary provider fails (e.g. quota exhaustion). It matches by model category
+// (chat/vision) and excludes the failed provider kind.
+func (c Catalog) FallbackProvider(failedKind ProviderKind, category string) (Provider, Model, error) {
+	for _, m := range c.Models {
+		if !m.IsActive {
+			continue
+		}
+		if category != "" && m.Category != category {
+			continue
+		}
+		p, ok := c.FindProviderByID(m.ProviderID)
+		if !ok || p.Kind == failedKind || p.Status != "active" {
+			continue
+		}
+		return p, m, nil
+	}
+	return Provider{}, Model{}, fmt.Errorf("catalog: no fallback provider available for %q (category %q)", failedKind, category)
+}
+
 // EstimateSessionCost computes the projected session cost in paise for a
 // request (prompt tokens + max completion tokens). This is what the wallet
 // reserves before a conversation starts.
@@ -203,9 +224,32 @@ func (c Catalog) ActiveModels() []Model {
 	return out
 }
 
-// NormalizeModelSlug strips a leading provider/ prefix if present so the
-// gateway can accept OpenAI-style "org/model" ids.
+// NormalizeModelSlug normalises a model identifier to a bare slug:
+//
+//  1. Strips the "models/" prefix returned by the Gemini ListModels API
+//     (e.g. "models/gemini-2.5-flash" → "gemini-2.5-flash").
+//
+//  2. Maps legacy/deprecated model slugs (e.g. "gemini-1.5-flash") to the
+//     active catalog model ("gemini-2.5-flash") so old sessions or API calls
+//     never trigger a 404 upstream.
+//
+//  3. Strips a leading provider/ prefix so the gateway can accept
+//     OpenAI-style "org/model" IDs (e.g. "openai/gpt-4o" → "gpt-4o").
 func NormalizeModelSlug(slug string) string {
+	// 1. Strip the Gemini "models/" resource prefix.
+	slug = strings.TrimPrefix(slug, "models/")
+
+	// 2. Alias legacy/obsolete Gemini model slugs to currently supported active models.
+	switch slug {
+	case "gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.0-pro":
+		return "gemini-2.5-flash"
+	case "gemini-1.5-flash-lite", "gemini-1.5-flash-8b":
+		return "gemini-2.5-flash-lite"
+	case "gemini-1.5-pro", "gemini-1.5-pro-latest":
+		return "gemini-2.5-pro"
+	}
+
+	// 3. Strip remaining provider-namespace prefix (e.g. "openai/gpt-4o").
 	if i := strings.LastIndex(slug, "/"); i >= 0 {
 		return slug[i+1:]
 	}

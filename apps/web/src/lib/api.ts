@@ -32,6 +32,9 @@ export interface MarketModel {
   throughput_tps: number;
 
   is_active: boolean;
+  supports_chat?: boolean;
+  supports_images?: boolean;
+  supports_streaming?: boolean;
 }
 
 export interface Catalog {
@@ -259,5 +262,12 @@ export async function streamSession(
   } catch (e) {
     cb.onError(e instanceof Error ? e.message : "stream interrupted");
   }
+}
+
+export async function generateImageSession(
+  sessionId: string,
+  prompt: string,
+): Promise<StreamSummary & { image_url?: string }> {
+  return postJSON<StreamSummary & { image_url?: string }>(`/api/sessions/${sessionId}/image`, { prompt });
 }
 
