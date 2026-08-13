@@ -1012,9 +1012,9 @@ All models listed in the catalog are backed by real upstream API integrations wi
 
 | Provider | Model | Model Slug | Context Window | Description |
 | --- | --- | --- | --- | --- |
-| **Gemini** | Gemini 2.0 Flash | `gemini-2.0-flash` | 1,048,576 | Low-latency multimodal generation |
-| **Gemini** | Gemini 1.5 Flash | `gemini-1.5-flash` | 1,048,576 | Fast and versatile performance |
-| **Gemini** | Gemini 1.5 Pro | `gemini-1.5-pro` | 2,097,152 | Mid-tier reasoning for complex tasks |
+| **Gemini** | Gemini 2.5 Flash | `gemini-2.5-flash` | 1,048,576 | Fast and affordable multimodal model |
+| **Gemini** | Gemini 2.5 Flash Lite | `gemini-2.5-flash-lite` | 1,048,576 | Fastest and most affordable option |
+| **Gemini** | Gemini 2.5 Pro | `gemini-2.5-pro` | 2,097,152 | Most intelligent Gemini model for complex tasks |
 | **OpenAI** | GPT-4o | `gpt-4o` | 128,000 | Flagship high-intelligence model |
 | **OpenAI** | GPT-4o Mini | `gpt-4o-mini` | 128,000 | Affordable small model for lightweight tasks |
 | **OpenAI** | GPT-3.5 Turbo | `gpt-3.5-turbo` | 16,385 | Legacy fast text model |

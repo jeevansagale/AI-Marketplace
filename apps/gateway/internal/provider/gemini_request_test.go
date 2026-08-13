@@ -1,10 +1,13 @@
 package provider_test
 
 import (
+	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/joho/godotenv"
 	"github.com/x402-marketplace/catalog"
 	"github.com/x402-marketplace/gateway/internal/provider"
 )
@@ -17,7 +20,7 @@ func TestGeminiRequestBodyHasNoStreamingField(t *testing.T) {
 	adapter := provider.NewGeminiAdapter("https://generativelanguage.googleapis.com/v1beta", "TEST_KEY")
 
 	req := provider.Request{
-		Model: "gemini-2.0-flash",
+		Model: "gemini-2.5-flash",
 		Messages: []provider.Message{
 			{Role: "user", Content: "Hello, what is 2+2?"},
 		},
@@ -79,6 +82,57 @@ func TestGeminiRequestBodyHasNoStreamingField(t *testing.T) {
 	}
 
 	t.Log("ALL ASSERTIONS PASSED — no streaming field in Gemini request body")
+}
+
+// TestLiveGeminiStreaming performs a real streaming API call against Google's Gemini endpoint
+// using OMNI_GEMINI_API_KEY from environment.
+func TestLiveGeminiStreaming(t *testing.T) {
+	dir, _ := os.Getwd()
+	for i := 0; i < 5; i++ {
+		envPath := dir + "/.env"
+		if _, err := os.Stat(envPath); err == nil {
+			_ = godotenv.Load(envPath)
+			break
+		}
+		dir = dir + "/.."
+	}
+
+	key := os.Getenv("OMNI_GEMINI_API_KEY")
+	if key == "" {
+		key = os.Getenv("GEMINI_API_KEY")
+	}
+	if key == "" {
+		t.Skip("Skipping live test: OMNI_GEMINI_API_KEY not set")
+	}
+
+	adapter := provider.NewGeminiAdapter("https://generativelanguage.googleapis.com/v1beta", key)
+
+	req := provider.Request{
+		Model: "gemini-2.5-flash",
+		Messages: []provider.Message{
+			{Role: "user", Content: "Reply with the word 'SUCCESS'."},
+		},
+		MaxTokens: 32,
+	}
+
+	var chunks []string
+	usage, err := adapter.Stream(context.Background(), req, func(chunk string) error {
+		chunks = append(chunks, chunk)
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("Live Gemini stream failed: %v", err)
+	}
+
+	if len(chunks) == 0 {
+		t.Fatalf("Expected SSE chunks from live stream, got 0")
+	}
+
+	t.Logf("✅ LIVE GEMINI STREAM SUCCESSFUL!")
+	t.Logf("Received %d SSE chunks", len(chunks))
+	t.Logf("Usage: Prompt=%d, Completion=%d, Latency=%dms", usage.PromptTokens, usage.CompletionTokens, usage.LatencyMS)
+	t.Logf("First Chunk Sample: %s", strings.TrimSpace(chunks[0]))
 }
 
 func keys(m map[string]any) []string {

@@ -71,8 +71,8 @@ func main() {
 	logger := log.New(os.Stdout, "[gateway] ", log.LstdFlags)
 
 	// Load .env automatically on local startup.
-	_ = godotenv.Load()            // Try current directory
-	_ = godotenv.Load("../.env")   // Try parent directory
+	_ = godotenv.Load()             // Try current directory
+	_ = godotenv.Load("../.env")    // Try parent directory
 	_ = godotenv.Load("../../.env") // Try grandparent directory
 
 	logger.Println("✓ Loaded .env (if present)")

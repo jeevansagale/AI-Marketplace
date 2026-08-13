@@ -82,11 +82,18 @@ func defaultProviders() []Provider {
 }
 
 // defaultModels returns the canonical model catalog in paise (INR) per 1K tokens.
+// Model slugs are verified against GET /v1beta/models with a live API key.
+// Last verified: 2026-08-13.
 func defaultModels() []Model {
 	return []Model{
-		{"20000000-0000-0000-0000-000000000001", "10000000-0000-0000-0000-000000000001", "Gemini 2.0 Flash", "gemini-2.0-flash", "chat", "Low-latency multimodal generation with 1M token context.", 1048576, 10, 2, 3, "Gemini", 380, 96.0, true},
-		{"20000000-0000-0000-0000-000000000002", "10000000-0000-0000-0000-000000000001", "Gemini 1.5 Flash", "gemini-1.5-flash", "chat", "Fast and versatile performance for high-frequency workloads.", 1048576, 8, 1, 2, "Gemini", 250, 120.0, true},
-		{"20000000-0000-0000-0000-000000000003", "10000000-0000-0000-0000-000000000001", "Gemini 1.5 Pro", "gemini-1.5-pro", "chat", "Mid-tier reasoning model for complex tasks with 2M token context.", 2097152, 25, 5, 15, "Gemini", 650, 45.0, true},
+		// ── Gemini (verified live against GET /v1beta/models 2026-08-13) ──────
+		// gemini-2.5-flash: fast, low-cost, 1M context.
+		{"20000000-0000-0000-0000-000000000001", "10000000-0000-0000-0000-000000000001", "Gemini 2.5 Flash", "gemini-2.5-flash", "chat", "Fast and affordable multimodal model with 1M token context.", 1048576, 10, 2, 3, "Gemini", 380, 96.0, true},
+		// gemini-2.5-flash-lite: cheapest option for lightweight tasks.
+		{"20000000-0000-0000-0000-000000000002", "10000000-0000-0000-0000-000000000001", "Gemini 2.5 Flash Lite", "gemini-2.5-flash-lite", "chat", "Fastest and most affordable Gemini model for high-frequency workloads.", 1048576, 5, 1, 2, "Gemini", 220, 140.0, true},
+		// gemini-2.5-pro: highest-intelligence Gemini model.
+		{"20000000-0000-0000-0000-000000000003", "10000000-0000-0000-0000-000000000001", "Gemini 2.5 Pro", "gemini-2.5-pro", "chat", "Most intelligent Gemini model for complex reasoning tasks.", 2097152, 30, 7, 20, "Gemini", 800, 40.0, true},
+		// ── OpenAI ───────────────────────────────────────────────────────────
 		{"20000000-0000-0000-0000-000000000004", "10000000-0000-0000-0000-000000000002", "GPT-4o", "gpt-4o", "chat", "Flagship high-intelligence multimodal flagship model.", 128000, 20, 4, 12, "OpenAI", 400, 80.0, true},
 		{"20000000-0000-0000-0000-000000000005", "10000000-0000-0000-0000-000000000002", "GPT-4o Mini", "gpt-4o-mini", "chat", "Affordable, fast small model for lightweight tasks.", 128000, 5, 1, 2, "OpenAI", 180, 160.0, true},
 		{"20000000-0000-0000-0000-000000000006", "10000000-0000-0000-0000-000000000002", "GPT-3.5 Turbo", "gpt-3.5-turbo", "chat", "Legacy fast text model.", 16385, 5, 1, 2, "OpenAI", 200, 140.0, true},

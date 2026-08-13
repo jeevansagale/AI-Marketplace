@@ -28,14 +28,14 @@ func TestEstimateSessionCost(t *testing.T) {
 
 func TestProviderForModel(t *testing.T) {
 	c := Default()
-	p, m, err := c.ProviderForModel("gemini-2.0-flash")
+	p, m, err := c.ProviderForModel("gemini-2.5-flash")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if p.Kind != ProviderKindGemini {
 		t.Errorf("expected gemini provider, got %s", p.Kind)
 	}
-	if m.Slug != "gemini-2.0-flash" {
+	if m.Slug != "gemini-2.5-flash" {
 		t.Errorf("unexpected model %s", m.Slug)
 	}
 	if _, _, err := c.ProviderForModel("does-not-exist"); err == nil {

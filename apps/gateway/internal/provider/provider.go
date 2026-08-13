@@ -379,4 +379,3 @@ func (r *Registry) Select(p catalog.Provider) (Provider, error) {
 func (h *HTTPAdapter) BuildRequestForTest(req Request) (url string, body any) {
 	return h.buildRequest(req)
 }
-
