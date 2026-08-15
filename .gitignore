@@ -1,10 +1,16 @@
-# Go
+# ─── Go ────────────────────────────────────────────────────────────────────────
 bin/
 vendor/
 *.test
 coverage.out
 
-# Node
+# Compiled binaries (never commit platform-specific executables)
+**/*.exe
+**/gateway_new.exe
+apps/gateway/gateway
+apps/controlplane/controlplane
+
+# ─── Node ───────────────────────────────────────────────────────────────────────
 node_modules/
 .next/
 out/
@@ -12,23 +18,38 @@ dist/
 .turbo/
 *.tsbuildinfo
 
-# Env
+# ─── Environment ────────────────────────────────────────────────────────────────
 .env
 .env.local
 .env.production
 .env.development
 .env.*.local
 
-# OS
+# ─── OS ─────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
-*.exe
+desktop.ini
 
-# Logs / runtime
+# ─── Logs / Runtime ─────────────────────────────────────────────────────────────
 *.log
 tmp/
 data/
 
-# IDE
+# ─── IDE ────────────────────────────────────────────────────────────────────────
 .idea/
 .vscode/*.json
+*.swp
+*.swo
+.vim/
+
+# ─── Testing / Coverage ─────────────────────────────────────────────────────────
+coverage/
+*.lcov
+
+# ─── Generated / Build Artifacts ────────────────────────────────────────────────
+# Exclude research/dump files from earlier development phases
+repo_dump.txt
+git_status.txt
+file_sizes.txt
+files.txt
+tree.txt
