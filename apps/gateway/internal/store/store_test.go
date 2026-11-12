@@ -36,3 +36,34 @@ func TestDebit(t *testing.T) {
 		t.Fatal("overdraw must fail")
 	}
 }
+func TestIssuedChallengeNonceIsSingleUse(t *testing.T) {
+	s := New()
+	expiresAt := time.Now().Add(time.Minute)
+	if !s.RegisterChallengeNonce("issued", expiresAt) {
+		t.Fatal("expected challenge nonce registration to succeed")
+	}
+	if !s.ConsumeChallengeNonce("issued", time.Now()) {
+		t.Fatal("expected issued nonce to be consumed")
+	}
+	if s.ConsumeChallengeNonce("issued", time.Now()) {
+		t.Fatal("challenge nonce must not be reusable")
+	}
+}
+
+func TestUnissuedChallengeNonceIsRejected(t *testing.T) {
+	s := New()
+	if s.ConsumeChallengeNonce("not-issued", time.Now()) {
+		t.Fatal("unissued nonce must be rejected")
+	}
+}
+
+func TestExpiredChallengeNonceIsRejected(t *testing.T) {
+	s := New()
+	expiresAt := time.Now().Add(-time.Second)
+	if s.RegisterChallengeNonce("expired", time.Now().Add(-time.Minute)) {
+		t.Fatal("already expired nonce must not be registered")
+	}
+	if s.ConsumeChallengeNonce("expired", expiresAt) {
+		t.Fatal("expired nonce must not be consumed")
+	}
+}
