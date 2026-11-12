@@ -16,7 +16,12 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha512"
+	"crypto/subtle"
+	"encoding/base32"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -542,6 +547,13 @@ func (g *gateway) issueChallenge(w http.ResponseWriter, ctx string) {
 		return
 	}
 
+	expiresAt := time.Now().Add(challengeTTL)
+	if !g.st.RegisterChallengeNonce(nonce, expiresAt) {
+		g.logger.Printf("ctx=%s failed to register payment nonce", ctx)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
 	ch := x402.Challenge{
 		Schema:    "x402.invoice/1.0",
 		Network:   network,
@@ -549,7 +561,7 @@ func (g *gateway) issueChallenge(w http.ResponseWriter, ctx string) {
 		AssetID:   x402.DefaultUSDCASAID,
 		Amount:    costPerCall,
 		Nonce:     nonce,
-		ExpiresAt: time.Now().Add(challengeTTL).UTC().Format(time.RFC3339),
+		ExpiresAt: expiresAt.UTC().Format(time.RFC3339),
 		Metadata: x402.Metadata{
 			Model: "market-llama-3.1-8b-instruct",
 		},
@@ -583,21 +595,42 @@ func (g *gateway) verifyAndBill(w http.ResponseWriter, r *http.Request, proofHdr
 	if p.Schema != "x402.proof/1.0" {
 		return errors.New("unsupported proof schema")
 	}
-	if p.Hint != "" && p.Hint != "ed25519" {
-		return errors.New("unsupported signature hint")
+	if p.Hint != "ed25519" {
+		return errors.New("unsupported or missing signature hint")
 	}
-
-	if !g.st.ClaimNonce(p.Nonce, nonceTTL) {
-		return errors.New("nonce replay detected")
+	if strings.TrimSpace(p.ChannelID) == "" || strings.TrimSpace(p.Sender) == "" {
+		return errors.New("missing channel or sender")
 	}
 
 	ch, ok := g.st.GetChannel(p.ChannelID)
 	if !ok {
 		return errors.New("unknown channel")
 	}
+	if ch.Escrow != escrowAccount {
+		return errors.New("channel escrow does not match the issued challenge")
+	}
 
-	if strings.TrimSpace(p.Sender) == "" {
-		return errors.New("missing sender")
+	// The nonce must have been issued by this server, and its signed timestamp
+	// must fall inside the challenge validity window.
+	now := time.Now()
+	signedAt, err := time.Parse(time.RFC3339, p.SignedAt)
+	if err != nil || signedAt.After(now.Add(30*time.Second)) || signedAt.Before(now.Add(-challengeTTL)) {
+		return errors.New("invalid or expired proof timestamp")
+	}
+
+	challenge := x402.Challenge{
+		Schema:  "x402.invoice/1.0",
+		Network: network,
+		Escrow:  ch.Escrow,
+		AssetID: x402.DefaultUSDCASAID,
+		Amount:  costPerCall,
+		Nonce:   p.Nonce,
+	}
+	if !verifyAlgorandSignature(p.Sender, p.Signature, x402.CanonicalBytes(challenge, p)) {
+		return errors.New("invalid payment signature")
+	}
+	if !g.st.ConsumeChallengeNonce(p.Nonce, now) {
+		return errors.New("unknown, expired, or replayed challenge nonce")
 	}
 
 	bal, ok := g.st.Debit(p.ChannelID, costPerCall)
@@ -608,6 +641,30 @@ func (g *gateway) verifyAndBill(w http.ResponseWriter, r *http.Request, proofHdr
 	g.logger.Printf("ctx=%s billed channel=%s nonce=%s balance=%d", ctx, ch.ChannelID, p.Nonce, bal)
 	w.Header().Set(headerBalance, fmt.Sprintf("%d", bal))
 	return nil
+}
+
+// verifyAlgorandSignature validates the sender address checksum and verifies
+// the Ed25519 proof against the public key encoded in the Algorand address.
+func verifyAlgorandSignature(sender, encodedSignature string, payload []byte) bool {
+	address, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(strings.ToUpper(strings.TrimSpace(sender)))
+	if err != nil || len(address) != ed25519.PublicKeySize+4 {
+		return false
+	}
+
+	publicKey := address[:ed25519.PublicKeySize]
+	checksum := sha512.Sum512_256(publicKey)
+	if subtle.ConstantTimeCompare(address[ed25519.PublicKeySize:], checksum[len(checksum)-4:]) != 1 {
+		return false
+	}
+
+	signature, err := base64.StdEncoding.DecodeString(encodedSignature)
+	if err != nil {
+		signature, err = base64.RawStdEncoding.DecodeString(encodedSignature)
+	}
+	if err != nil || len(signature) != ed25519.SignatureSize {
+		return false
+	}
+	return ed25519.Verify(ed25519.PublicKey(publicKey), payload, signature)
 }
 
 func randomNonce() (string, error) {
