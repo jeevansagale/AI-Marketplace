@@ -11,6 +11,7 @@ import (
 type ChannelState struct {
 	ChannelID   string
 	Escrow      string
+	Sender      string // authorized Algorand account for this channel
 	Balance     uint64 // locked micro-USDC remaining
 	Spent       uint64
 	LatestNonce uint64
@@ -104,10 +105,15 @@ func (s *Store) Debit(channelID string, amount uint64) (uint64, bool) {
 }
 
 // SeedDemo populates the demo consumer channel for the hackathon demo.
-func (s *Store) SeedDemo() {
+func (s *Store) SeedDemo(authorizedSender ...string) {
+	sender := ""
+	if len(authorizedSender) > 0 {
+		sender = authorizedSender[0]
+	}
 	s.UpsertChannel(&ChannelState{
 		ChannelID:   "40000000-0000-0000-0000-000000000001",
 		Escrow:      "DEMOWALLET000000000000000000000000000000000",
+		Sender:      sender,
 		Balance:     100_000_000, // 100 USDC
 		Spent:       4_300_000,
 		LatestNonce: 42,
