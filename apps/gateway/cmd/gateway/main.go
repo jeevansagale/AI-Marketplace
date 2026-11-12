@@ -86,7 +86,7 @@ func main() {
 	addr := envOr("OMNI_HTTP_ADDR", ":8080")
 
 	st := store.New()
-	st.SeedDemo()
+	st.SeedDemo(os.Getenv("OMNI_DEMO_SENDER_ADDRESS"))
 
 	cat := catalog.Default()
 	lg := ledger.New()
@@ -608,6 +608,9 @@ func (g *gateway) verifyAndBill(w http.ResponseWriter, r *http.Request, proofHdr
 	}
 	if ch.Escrow != escrowAccount {
 		return errors.New("channel escrow does not match the issued challenge")
+	}
+	if ch.Sender == "" || !strings.EqualFold(ch.Sender, p.Sender) {
+		return errors.New("sender is not authorized for this channel")
 	}
 
 	// The nonce must have been issued by this server, and its signed timestamp
