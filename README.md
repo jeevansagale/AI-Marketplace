@@ -134,3 +134,16 @@ See [contribution guidelines](docs/CONTRIBUTING.md).
 ## License
 
 No root-level license file is currently included. Unless a license is added, the repository should be treated as source available for viewing, not as granting general permission to reuse or redistribute the code.
+## Security and Demo Boundaries
+
+The HTTP 402 demonstration verifies the Ed25519 signature against the public key encoded in the Algorand sender address, checks the server-issued nonce and its expiry, rejects replayed proofs, and binds the seeded demo channel to `OMNI_DEMO_SENDER_ADDRESS`. Set that variable to the public address corresponding to the signing account; the private key must remain client-side.
+
+This is still a **local/hackathon demo, not production payment infrastructure**:
+
+- The channel, wallet, nonce registry, session state and ledger are in-memory and reset on restart.
+- The seeded channel is a demo balance, not an on-chain escrow account or real USDC balance.
+- Top-ups use a simulated payment provider; a successful demo top-up is not a real payment.
+- The wallet/session API uses a single demo wallet and does not provide production user authentication or account isolation.
+- Do not use this system to process money, hold customer balances or make security guarantees.
+
+Production use requires persistent transactional storage, authenticated users, a real payment-provider webhook, chain/escrow verification, channel ownership and authorization, rate limiting, audit controls and a separate security review.
