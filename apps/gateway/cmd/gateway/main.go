@@ -56,7 +56,7 @@ const (
 	costPerCall uint64 = 2500
 
 	challengeTTL  = 2 * time.Minute
-	nonceTTL      = 5 * time.Minute
+	demoChannelID = "40000000-0000-0000-0000-000000000001"
 	network       = "algorand-testnet"
 	escrowAccount = "DEMOWALLET000000000000000000000000000000000"
 )
@@ -540,6 +540,12 @@ func (g *gateway) handleChatCompletions(w http.ResponseWriter, r *http.Request) 
 
 // issueChallenge returns 402 with a fresh invoice.
 func (g *gateway) issueChallenge(w http.ResponseWriter, ctx string) {
+	channel, ok := g.st.GetChannel(demoChannelID)
+	if !ok || channel.Sender == "" {
+		writeErr(w, http.StatusServiceUnavailable, errors.New("payment channel owner is not configured"))
+		return
+	}
+
 	nonce, err := randomNonce()
 	if err != nil {
 		g.logger.Printf("ctx=%s nonce error: %v", ctx, err)
